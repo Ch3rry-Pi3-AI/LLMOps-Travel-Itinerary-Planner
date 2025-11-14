@@ -1,0 +1,44 @@
+## --------------------------------------------------------------
+## Deployment: Streamlit Application
+## --------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamlit-app
+  labels:
+    app: streamlit
+spec:
+  replicas: 1                     # Number of pod replicas
+  selector:
+    matchLabels:
+      app: streamlit
+  template:
+    metadata:
+      labels:
+        app: streamlit
+    spec:
+      containers:
+        - name: streamlit-container
+          image: streamlit-app:latest      # Local or registry image
+          imagePullPolicy: IfNotPresent    # Use cached image if available
+          ports:
+            - containerPort: 8501          # Streamlit port inside the container
+          envFrom:
+            - secretRef:
+                name: llmops-secrets       # Inject environment variables from K8s secret
+---
+## --------------------------------------------------------------
+## Service: LoadBalancer for External Access
+## --------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamlit-service
+spec:
+  type: LoadBalancer                 # Exposes service externally
+  selector:
+    app: streamlit                   # Routes traffic to matching pods
+  ports:
+    - protocol: TCP
+      port: 80                       # External port
+      targetPort: 8501               # Container port
