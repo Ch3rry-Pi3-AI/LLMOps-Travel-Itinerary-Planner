@@ -1,0 +1,102 @@
+---
+# --------------------------------------------------------------
+# Logstash ConfigMap
+# Provides the Logstash pipeline configuration (logstash.conf)
+# --------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: logging
+data:
+  logstash.conf: |
+    # -------------------------------
+    # INPUT: Receive logs from Filebeat
+    # -------------------------------
+    input {
+      beats {
+        port => 5044
+      }
+    }
+
+    # -------------------------------
+    # FILTER: (currently empty — ready for future enrichment)
+    # -------------------------------
+    filter {
+      
+    }
+
+    # -------------------------------
+    # OUTPUT: Send logs to Elasticsearch
+    # -------------------------------
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch.logging.svc.cluster.local:9200"]
+        index => "filebeat-%{+YYYY.MM.dd}"
+      }
+    }
+
+---
+# --------------------------------------------------------------
+# Logstash Deployment
+# Runs Logstash as a single replica in the "logging" namespace
+# --------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:7.17.0
+
+        # Expose ports:
+        # 5044 → Filebeat input
+        # 9600 → Logstash monitoring API
+        ports:
+        - containerPort: 5044
+        - containerPort: 9600
+
+        # Mount pipeline configuration file
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/logstash/pipeline/logstash.conf
+          subPath: logstash.conf
+
+      volumes:
+      - name: config-volume
+        configMap:
+          name: logstash-config
+          items:
+          - key: logstash.conf
+            path: logstash.conf
+
+---
+# --------------------------------------------------------------
+# Logstash Service
+# Exposes Logstash to Filebeat inside the cluster
+# --------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: logging
+spec:
+  selector:
+    app: logstash
+
+  # Expose port 5044 to receive Beats data
+  ports:
+    - protocol: TCP
+      port: 5044
+      targetPort: 5044

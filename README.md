@@ -1,8 +1,18 @@
-# 🐳 **Docker & Kubernetes Deployment — LLMOps Travel Itinerary Planner**
+# 📊 **Centralised Logging Deployment — LLMOps Travel Itinerary Planner**
 
-This branch packages the **Streamlit-based Travel Itinerary Planner** into a **Docker container** and provides a **Kubernetes deployment + service** for running it in a cluster.
+This branch introduces a complete **centralised logging pipeline** for the Travel Itinerary Planner using the **ELK stack**:
 
-The new `Dockerfile` defines how to build a Python 3.12-based image that runs the Streamlit app, and `k8s-deployment.yaml` describes how to deploy that image and expose it via a LoadBalancer service.
+* **Filebeat** — Collects logs from every container/pod
+* **Logstash** — Processes, transforms, and routes logs
+* **Elasticsearch** — Stores logs in a powerful, searchable index
+* **Kibana** — Visualises logs through dashboards and search
+
+These four components work together to provide full observability of the application and cluster.
+This is the first stage where the project gains **production-grade, cluster-wide log monitoring**.
+
+<p align="center">
+  <img src="img/streamlit/streamlit_app.gif" alt="Streamlit Travel Itinerary Planner Demo" width="100%">
+</p>
 
 ## 🗂️ **Project Structure (Updated)**
 
@@ -22,8 +32,12 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 ├── uv.lock
 ├── main.py
 ├── app.py
-├── Dockerfile                 # 🐳 Container image definition for the Streamlit app
-├── k8s-deployment.yaml        # ☸️ Kubernetes Deployment + Service manifest
+├── Dockerfile
+├── k8s-deployment.yaml
+├── filebeat.yaml           # 📡 Collects container logs from all cluster nodes
+├── logstash.yaml           # 🔄 Receives logs and forwards them to Elasticsearch
+├── elasticsearch.yaml      # 🗄️ Stores logs in indexed search-optimised storage
+├── kibana.yaml             # 📊 Web UI for searching and visualising logs
 ├── src/
 │   ├── chains/
 │   │   └── itinerary_chain.py
@@ -39,189 +53,170 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 └── README.md
 ```
 
-> 💡 Only `Dockerfile` and `k8s-deployment.yaml` are annotated, as they are the new components introduced in this branch.
+Only the following files are new in this branch and are annotated here:
 
-## 🧩 **Overview**
+* `filebeat.yaml` 📡
+* `logstash.yaml` 🔄
+* `elasticsearch.yaml` 🗄️
+* `kibana.yaml` 📊
 
-This stage turns the Travel Itinerary Planner into a **deployable service**:
+## 🧩 **Overview of the Logging Pipeline**
 
-* The **Dockerfile**:
+This stage introduces a full **ELK-style logging workflow** that enables:
 
-  * Uses `python:3.12-slim` as the base image
-  * Installs system dependencies (e.g. `build-essential`, `curl`)
-  * Copies the project into `/app`
-  * Installs the package in editable mode with `pip install -e .`
-  * Exposes port **8501** for Streamlit
-  * Starts the app via `streamlit run app.py`
+* Cluster-wide log collection
+* Central storage of logs
+* Indexable log search
+* Visual dashboards
+* Debugging of failures in real time
 
-* The **Kubernetes manifest** (`k8s-deployment.yaml`):
+Below is a clear beginner-friendly breakdown of what each component does and why it matters.
 
-  * Creates a `Deployment` that runs the Streamlit container
-  * Mounts environment variables from the `llmops-secrets` Kubernetes Secret
-  * Exposes the app via a `Service` of type `LoadBalancer` on port **80 → 8501**
+### 📡 **Filebeat — Log Collector**
 
-This is the first stage where the app is fully prepared for **containerised, cloud-native deployment**.
+Filebeat runs as a **DaemonSet**, meaning **one pod per Kubernetes node**, ensuring:
 
-## 🐳 **Docker Image Details**
+* Every pod’s logs (`/var/log/containers/*.log`) are collected
+* Kubernetes metadata (namespace, pod name, container name) is added
+* Logs are forwarded to **Logstash**
 
-The `Dockerfile`:
+**Intuition:**
+Imagine Filebeat as a “tiny agent” sitting on every machine, picking up every log file and forwarding it reliably.
 
-* Uses environment settings:
+### 🔄 **Logstash — Log Router & Transformer**
 
-  ```dockerfile
-  ENV PYTHONDONTWRITEBYTECODE=1 \
-      PYTHONUNBUFFERED=1
-  ```
+Logstash receives logs from Filebeat and can:
 
-* Sets the working directory:
+* Filter them
+* Parse them
+* Transform them
+* Route them
 
-  ```dockerfile
-  WORKDIR /app
-  ```
+In this project, the configuration:
 
-* Installs OS-level dependencies and cleans up APT cache:
+* Accepts logs on port **5044** (standard Beats input)
+* Sends them straight to Elasticsearch
 
-  ```dockerfile
-  RUN apt-get update && apt-get install -y \
-      build-essential \
-      curl \
-      && rm -rf /var/lib/apt/lists/*
-  ```
+**Intuition:**
+If Filebeat is the courier, Logstash is the post office—it sorts, organises, and routes deliveries.
 
-* Copies the project and installs Python deps:
+### 🗄️ **Elasticsearch — Log Storage & Search Engine**
 
-  ```dockerfile
-  COPY . .
-  RUN pip install --no-cache-dir -e .
-  ```
+Elasticsearch stores logs as **documents** in an index.
+It is optimised for:
 
-* Exposes port **8501** and runs Streamlit:
+* Full-text search
+* Time-series queries
+* Filtering & aggregation
+* High-speed retrieval
 
-  ```dockerfile
-  EXPOSE 8501
-  CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
-  ```
+In this deployment:
 
-### 🔨 Build & Run Locally with Docker
+* Runs as a **single node** for simplicity
+* Stores logs in a persistent volume
+* No security enabled (development mode)
 
-From the project root:
+**Intuition:**
+Elasticsearch is like a giant, super-fast search engine for your logs.
 
-```bash
-# Build image
-docker build -t llmops-travel-planner:latest .
+### 📊 **Kibana — Log Viewer & Dashboard Tool**
 
-# Run container
-docker run -p 8501:8501 --env-file .env llmops-travel-planner:latest
+Kibana connects to Elasticsearch and provides:
+
+* A web UI for viewing logs
+* Filters, queries, dashboards
+* Time-series visualisations
+* Error and performance insights
+
+Exposed via a **NodePort** so you can open it in your browser.
+
+**Intuition:**
+Kibana is your “control centre”—search logs, view charts, identify errors.
+
+:
+
+## 🔄 **How the Log Flow Works (Simple Example)**
+
+Consider your Streamlit app pod writes:
+
+```
+2025-11-21 14:21:05 INFO Itinerary generated successfully
 ```
 
-Then open `http://localhost:8501` in your browser.
+Here is what happens:
 
-## ☸️ **Kubernetes Deployment Details**
+1. **Filebeat** (on the node) reads `/var/log/containers/app-xyz.log`.
+2. It attaches metadata:
 
-The `k8s-deployment.yaml` file defines two resources: a `Deployment` and a `Service`.
-
-### Deployment
-
-* Runs one replica of the Streamlit app:
-
-  ```yaml
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: streamlit-app
-    labels:
-      app: streamlit
-  spec:
-    replicas: 1
-    selector:
-      matchLabels:
-        app: streamlit
-    template:
-      metadata:
-        labels:
-          app: streamlit
-      spec:
-        containers:
-          - name: streamlit-container
-            image: streamlit-app:latest
-            imagePullPolicy: IfNotPresent
-            ports:
-              - containerPort: 8501
-            envFrom:
-              - secretRef:
-                  name: llmops-secrets
-  ```
-
-* Assumes you have a Kubernetes `Secret` called `llmops-secrets` providing the required environment variables (e.g. `GROQ_API_KEY`).
-
-### Service
-
-* Exposes the app externally via a LoadBalancer:
-
-  ```yaml
-  apiVersion: v1
-  kind: Service
-  metadata:
-    name: streamlit-service
-  spec:
-    type: LoadBalancer
-    selector:
-      app: streamlit
-    ports:
-      - protocol: TCP
-        port: 80
-        targetPort: 8501
-  ```
-
-* Traffic to port **80** on the LoadBalancer is forwarded to port **8501** on the pod.
-
-## 🚀 **How to Deploy to Kubernetes**
-
-Assuming your image is pushed to a registry (or available on the node), and your kube context is set:
-
-1. **Create the secret** (example):
-
-   ```bash
-   kubectl create secret generic llmops-secrets \
-     --from-literal=GROQ_API_KEY="your_groq_api_key_here"
    ```
-
-   Add other environment variables as needed.
-
-2. **Apply the manifest**:
-
-   ```bash
-   kubectl apply -f k8s-deployment.yaml
+   namespace=default
+   pod=streamlit-app-123
+   container=streamlit-container
    ```
+3. Filebeat forwards the enriched log to **Logstash**.
+4. Logstash receives it and sends it to **Elasticsearch**.
+5. Elasticsearch stores it as a document in an index:
 
-3. **Check resources**:
-
-   ```bash
-   kubectl get deployments
-   kubectl get pods
-   kubectl get svc
    ```
-
-4. Once the `streamlit-service` has an external IP (for a cloud LoadBalancer), open:
-
-   ```text
-   http://<EXTERNAL_IP>/
+   filebeat-2025.11.21
    ```
+6. You open **Kibana**, search:
 
-to access the Travel Itinerary Planner in your browser.
+   ```
+   app:streamlit AND level:INFO
+   ```
+7. You immediately see the log with filters and timestamps.
+
+This provides real production-grade observability.
+
+:
+
+## 🚀 **How to Deploy the Logging Stack**
+
+Assuming your cluster has the `logging` namespace:
+
+```bash
+kubectl create ns logging
+```
+
+Apply all four components:
+
+```bash
+kubectl apply -f elasticsearch.yaml
+kubectl apply -f logstash.yaml
+kubectl apply -f filebeat.yaml
+kubectl apply -f kibana.yaml
+```
+
+Check pods:
+
+```bash
+kubectl get pods -n logging
+```
+
+Once Kibana is running:
+
+```bash
+minikube service kibana -n logging
+```
+
+Or, for cloud clusters:
+
+```
+http://<NODE_IP>:30601
+```
 
 ## 🧰 **Integration Notes**
 
-| Component                       | Role                                                   |
-| ------------------------------- | ------------------------------------------------------ |
-| `Dockerfile`                    | Builds a Python 3.12-based image for the Streamlit app |
-| `k8s-deployment.yaml`           | Defines Kubernetes Deployment + LoadBalancer Service   |
-| `app.py`                        | Streamlit UI entry point inside the container          |
-| `src/core/planner.py`           | Orchestrates city and interests → itinerary            |
-| `src/chains/itinerary_chain.py` | LCEL chain that generates the itinerary text           |
-| `src/config/config.py`          | Reads environment variables (e.g. from `.env`/secrets) |
+| Component            | Purpose                                                        |
+| -------------------- | -------------------------------------------------------------- |
+| `filebeat.yaml`      | Collects logs from all pods and forwards to Logstash           |
+| `logstash.yaml`      | Receives Filebeat logs and forwards them to Elasticsearch      |
+| `elasticsearch.yaml` | Stores logs in searchable indices                              |
+| `kibana.yaml`        | Web UI for querying logs and building dashboards               |
+| `app.py`             | Application producing logs                                     |
+| `logger.py`          | Structured logging used by Filebeat → Logstash → Elasticsearch |
 
 ## ✅ **In summary**
 
-This branch transforms the LLMOps Travel Itinerary Planner into a **containerised, cluster-ready service**.
-With the new `Dockerfile` and `k8s-deployment.yaml`, the Streamlit app can be built into an image, pushed to a registry, and deployed behind a LoadBalancer in a Kubernetes environment, making it ready for scalable, production-style use.
+This branch adds a **complete cluster-wide logging pipeline**, elevating your LLMOps Travel Itinerary Planner from a deployed app to a **monitorable, observable, production-ready service**.

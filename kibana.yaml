@@ -1,0 +1,50 @@
+---
+# --------------------------------------------------------------
+# Kibana Deployment
+# Web UI for exploring and visualising logs stored in Elasticsearch
+# --------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.17.0
+
+          # Environment variable telling Kibana where Elasticsearch is located
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch:9200
+
+          # Expose the Kibana web interface inside the pod
+          ports:
+            - containerPort: 5601
+
+---
+# --------------------------------------------------------------
+# Kibana Service
+# Exposes Kibana via NodePort so you can access it externally
+# --------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  type: NodePort        # Exposes Kibana externally through a node port
+  selector:
+    app: kibana
+  ports:
+    - port: 5601        # Service port
+      nodePort: 30601   # External port on each node
