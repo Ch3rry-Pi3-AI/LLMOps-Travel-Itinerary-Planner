@@ -1,0 +1,198 @@
+"""
+planner.py
+
+Core module for managing user interaction and invoking the itinerary generation
+workflow in the LLMOps Travel Itinerary Planner.
+
+This module defines the `TravelPlanner` class, which is responsible for:
+    • Storing conversation state (messages, city, interests)
+    • Accepting user inputs (city, interests)
+    • Calling the itinerary generation runnable pipeline
+    • Logging activity and handling exceptions consistently
+
+Classes
+-------
+TravelPlanner
+    Orchestrates user inputs and executes the itinerary generation chain.
+"""
+
+# --------------------------------------------------------------
+# Imports
+# --------------------------------------------------------------
+
+# Message classes used for storing conversation history
+from langchain_core.messages import HumanMessage, AIMessage
+
+# The fully constructed LCEL pipeline (Prompt → Model → StrOutputParser)
+from src.chains.itinerary_chain import itinerary_chain
+
+# Project-wide logger with consistent formatting
+from src.utils.logger import get_logger
+
+# Custom exception wrapper for unified error reporting
+from src.utils.custom_exception import CustomException
+
+
+# --------------------------------------------------------------
+# Logger Setup
+# --------------------------------------------------------------
+
+# Create a logger specific to this module
+logger = get_logger(__name__)
+
+
+# --------------------------------------------------------------
+# Runnable Pipeline
+# --------------------------------------------------------------
+
+# Use the full LCEL pipeline defined in itinerary_chain.py
+itinerary_pipeline = itinerary_chain
+
+
+# --------------------------------------------------------------
+# Public API
+# --------------------------------------------------------------
+class TravelPlanner:
+    """
+    Manage and store user travel preferences and generate itineraries.
+
+    This class holds:
+        • The city provided by the user
+        • A list of interests (e.g., "museums", "coffee", "nightlife")
+        • A message history including human and AI messages
+        • The most recent generated itinerary text
+
+    Methods
+    -------
+    set_city(city: str)
+        Store the user's selected city.
+
+    set_interests(interests_str: str)
+        Parse a comma-separated interest string into a list.
+
+    create_itinerary() -> str
+        Generate an itinerary using the runnable chain and return the result.
+    """
+
+    def __init__(self) -> None:
+        # Stores user and AI messages exchanged so far
+        self.messages: list = []
+
+        # Stores the selected city provided by the user
+        self.city: str = ""
+
+        # Stores cleaned user interests as a list
+        self.interests: list[str] = []
+
+        # Stores the latest generated itinerary output
+        self.itinerary: str = ""
+
+        logger.info("Initialized TravelPlanner instance")
+
+    def set_city(self, city: str) -> None:
+        """
+        Set and store the target city for itinerary generation.
+
+        Parameters
+        ----------
+        city : str
+            Name of the city the user wants to plan a day trip in.
+        """
+        try:
+            # Clean whitespace from the input
+            self.city = city.strip()
+
+            # Add the city as a HumanMessage to the conversation history
+            self.messages.append(HumanMessage(content=self.city))
+
+            logger.info("City set successfully")
+        except Exception as e:
+            logger.error(f"Error while setting city: {e}")
+            raise CustomException("Failed to set city", e)
+
+    def set_interests(self, interests_str: str) -> None:
+        """
+        Parse and store the user's interests.
+
+        Parameters
+        ----------
+        interests_str : str
+            A comma-separated string describing the user's interests.
+        """
+        try:
+            # Convert "coffee, art, nightlife" → ["coffee", "art", "nightlife"]
+            items = [i.strip() for i in interests_str.split(",") if i.strip()]
+
+            # Store parsed interests
+            self.interests = items
+
+            # Add the original string to the conversation history
+            self.messages.append(HumanMessage(content=interests_str))
+
+            logger.info("Interests set successfully")
+        except Exception as e:
+            logger.error(f"Error while setting interests: {e}")
+            raise CustomException("Failed to set interests", e)
+
+    def create_itinerary(self) -> str:
+        """
+        Generate a day-trip itinerary using the runnable pipeline.
+
+        The method:
+            1. Prepares the input dictionary expected by the prompt
+            2. Invokes the runnable chain (prompt → model → parser)
+            3. Stores and logs the resulting itinerary
+            4. Records an AIMessage with the output
+
+        Returns
+        -------
+        str
+            A formatted day-trip itinerary generated by the Groq LLM.
+        """
+        try:
+            logger.info(
+                f"Generating itinerary for city='{self.city}', interests={self.interests}"
+            )
+
+            # Prepare variables for the LCEL pipeline
+            input_data = {
+                "city": self.city,
+                "interests": ", ".join(self.interests)
+            }
+
+            # Invoke the full itinerary pipeline (returns a plain string)
+            result = itinerary_pipeline.invoke(input_data)
+
+            # Store the latest itinerary
+            self.itinerary = result
+
+            # Store result as an AIMessage in the conversation history
+            self.messages.append(AIMessage(content=result))
+
+            logger.info("Itinerary generated successfully")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error while creating itinerary: {e}")
+            raise CustomException("Failed to create itinerary", e)
+
+
+# --------------------------------------------------------------
+# Standalone Test Runner
+# --------------------------------------------------------------
+if __name__ == "__main__":
+    # Create a planner instance
+    planner = TravelPlanner()
+
+    # Set sample inputs
+    planner.set_city("Barcelona")
+    planner.set_interests("architecture, beaches, nightlife")
+
+    print("\n🧪 Testing TravelPlanner standalone...\n")
+
+    # Generate the itinerary
+    output = planner.create_itinerary()
+    print(output)
+
+    print("\n✅ Done.\n")
