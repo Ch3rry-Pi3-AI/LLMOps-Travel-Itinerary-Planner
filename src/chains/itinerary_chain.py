@@ -4,33 +4,33 @@ itinerary_chain.py
 Defines the itinerary generation chain for the LLMOps Travel Itinerary Planner.
 This module builds a runnable sequence using LangChain Expression Language (LCEL),
 combining a prompt template, a Groq chat model, and a string output parser to
-produce clean, Markdown-formatted travel itineraries.
+produce clean, strictly formatted Markdown travel itineraries.
 
 Functions
 ---------
 generate_itinerary(city: str, interests: list[str]) -> str
-    Generate a day-trip itinerary using the runnable chain.
+    Generate a 1-day travel itinerary based on a city and list of interests.
 
 Objects
 -------
 itinerary_chain : RunnableSequence
-    Composed LCEL pipeline: Prompt → Model → StrOutputParser
+    LCEL pipeline composed of: Prompt → Groq Model → StrOutputParser.
 """
 
 # --------------------------------------------------------------
 # Imports
 # --------------------------------------------------------------
 
-# Groq-based chat model wrapper for LangChain
+# Groq LLM wrapper for LangChain
 from langchain_groq import ChatGroq
 
-# Prompt template builder for chat formatting
+# Structured chat prompt builder
 from langchain_core.prompts import ChatPromptTemplate
 
-# Parses model output into a final string (good for Markdown)
+# Converts model output to a plain string
 from langchain_core.output_parsers import StrOutputParser
 
-# Securely load API keys from config
+# Load API key from configuration module
 from src.config.config import GROQ_API_KEY
 
 
@@ -38,31 +38,58 @@ from src.config.config import GROQ_API_KEY
 # Model Configuration
 # --------------------------------------------------------------
 
-# Instantiate the Groq chat model with deterministic generation
+# Create the Groq model instance
 llm = ChatGroq(
-    groq_api_key=GROQ_API_KEY,         # API key loaded via .env + config.py
-    model="llama-3.3-70b-versatile",   # Current Groq Llama 3.3 model
-    temperature=0.3                    # Balanced creativity + reliability
+    groq_api_key=GROQ_API_KEY,         # API key loaded from .env
+    model="llama-3.3-70b-versatile",   # Latest Groq Llama-3.3 model
+    temperature=0.3                    # Balanced creativity level
 )
+
+
+# --------------------------------------------------------------
+# Strict Markdown System Prompt
+# --------------------------------------------------------------
+
+SYSTEM_INSTRUCTIONS = """
+You are an expert travel assistant who ALWAYS responds in clean, well-structured Markdown.
+
+Follow these EXACT formatting rules. Do not deviate:
+
+1. Your entire output MUST start with a blank line, followed by:
+
+Your {city} 1-Day Itinerary is ...
+
+#### Morning
+* Time: Activity
+* Time: Activity
+* Time: Activity
+
+#### Afternoon
+* Time: Activity
+* Time: Activity
+
+#### Evening
+* Time: Activity
+* Time: Activity
+
+2. ALWAYS include a blank line before each heading.
+3. EACH bullet point must be on its own line starting with "* ".
+4. NEVER merge or combine headings on the same line.
+5. NEVER collapse bullet points into a single line.
+6. Do NOT add any text outside the formatted itinerary.
+
+Generate a polished and helpful itinerary based on the given city and user interests.
+"""
 
 
 # --------------------------------------------------------------
 # Prompt Template
 # --------------------------------------------------------------
 
-# Define the message structure for itinerary creation
+# Build the chat prompt using system and human messages
 prompt = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        "You are a helpful travel assistant. Create a concise 1-day itinerary "
-        "for {city} based on the user's interests: {interests}. "
-        "Respond in clear Markdown with short bullet points grouped by "
-        "time of day (Morning, Afternoon, Evening)."
-    ),
-    (
-        "human",
-        "Please generate the itinerary."
-    ),
+    ("system", SYSTEM_INSTRUCTIONS),
+    ("human", "Generate a one-day itinerary for {city} based on these interests: {interests}")
 ])
 
 
@@ -70,7 +97,7 @@ prompt = ChatPromptTemplate.from_messages([
 # Runnable Chain (LCEL)
 # --------------------------------------------------------------
 
-# Compose: Prompt → LLM → OutputParser as a repeatable pipeline
+# Compose the pipeline: Prompt → LLM → Output Parser
 itinerary_chain = prompt | llm | StrOutputParser()
 
 
@@ -79,27 +106,27 @@ itinerary_chain = prompt | llm | StrOutputParser()
 # --------------------------------------------------------------
 def generate_itinerary(city: str, interests: list[str]) -> str:
     """
-    Generate a concise, Markdown-formatted day-trip itinerary.
+    Generate a strictly formatted Markdown travel itinerary.
 
     Parameters
     ----------
     city : str
-        The target city for the itinerary (e.g., "Vienna").
+        The city for which the itinerary should be generated.
     interests : list[str]
-        List of user interests (e.g., ["art", "coffee", "architecture"]).
+        User interests such as ["museums", "coffee", "art"].
 
     Returns
     -------
     str
-        A Markdown itinerary produced by the Groq LLM via the runnable chain.
+        A clean, Markdown-formatted itinerary generated through LCEL.
     """
-    # Format runtime values for the prompt
+    # Prepare inputs for the prompt variables
     input_data = {
         "city": city,
         "interests": ", ".join(interests)
     }
 
-    # Execute the runnable chain (Prompt → LLM → Parser)
+    # Invoke the runnable chain (Prompt → Model → Parser)
     result = itinerary_chain.invoke(input_data)
 
     return result
@@ -109,7 +136,7 @@ def generate_itinerary(city: str, interests: list[str]) -> str:
 # Standalone Test Runner
 # --------------------------------------------------------------
 if __name__ == "__main__":
-    # Simple manual test without requiring Streamlit or Planner class
+    # Simple standalone execution for quick testing
     sample_city = "Lisbon"
     sample_interests = ["history", "coffee", "viewpoints"]
 
