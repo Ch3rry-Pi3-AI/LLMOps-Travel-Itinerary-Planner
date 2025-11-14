@@ -1,57 +1,77 @@
 """
 itinerary_chain.py
 
-LangChain-based itinerary generator for the LLMOps Travel Itinerary Planner.
-
-This module connects a Groq chat model to a simple function that produces a
-concise, bulleted **day-trip itinerary** for a given city and list of interests.
+Defines the itinerary generation chain for the LLMOps Travel Itinerary Planner.
+This module builds a runnable sequence using LangChain Expression Language (LCEL),
+combining a prompt template, a Groq chat model, and a string output parser to
+produce clean, Markdown-formatted travel itineraries.
 
 Functions
 ---------
 generate_itinerary(city: str, interests: list[str]) -> str
-    Produce a brief, bulleted itinerary using the configured Groq chat model.
+    Generate a day-trip itinerary using the runnable chain.
+
+Objects
+-------
+itinerary_chain : RunnableSequence
+    Composed LCEL pipeline: Prompt → Model → StrOutputParser
 """
 
 # --------------------------------------------------------------
 # Imports
 # --------------------------------------------------------------
-# Import Groq chat model wrapper for LangChain integration
+
+# Groq-based chat model wrapper for LangChain
 from langchain_groq import ChatGroq
 
-# Import structured chat prompt builder
+# Prompt template builder for chat formatting
 from langchain_core.prompts import ChatPromptTemplate
 
-# Import Groq API key securely from config
+# Parses model output into a final string (good for Markdown)
+from langchain_core.output_parsers import StrOutputParser
+
+# Securely load API keys from config
 from src.config.config import GROQ_API_KEY
 
 
 # --------------------------------------------------------------
 # Model Configuration
 # --------------------------------------------------------------
-# Create a Groq-backed chat model instance
+
+# Instantiate the Groq chat model with deterministic generation
 llm = ChatGroq(
-    groq_api_key=GROQ_API_KEY,            # API key string
-    model="llama-3.3-70b-versatile",      # Groq model identifier
-    temperature=0.3                       # Mild creativity for natural output
+    groq_api_key=GROQ_API_KEY,         # API key loaded via .env + config.py
+    model="llama-3.3-70b-versatile",   # Current Groq Llama 3.3 model
+    temperature=0.3                    # Balanced creativity + reliability
 )
 
 
 # --------------------------------------------------------------
 # Prompt Template
 # --------------------------------------------------------------
-# Define the chat prompt for itinerary generation
+
+# Define the message structure for itinerary creation
 prompt = ChatPromptTemplate.from_messages([
     (
         "system",
-        "You are a helpful travel assistant. Create a 1-day itinerary for {city} "
-        "based on the user's interests: {interests}. Respond with a brief, "
-        "bulleted itinerary with time-of-day groupings."
+        "You are a helpful travel assistant. Create a concise 1-day itinerary "
+        "for {city} based on the user's interests: {interests}. "
+        "Respond in clear Markdown with short bullet points grouped by "
+        "time of day (Morning, Afternoon, Evening)."
     ),
     (
         "human",
-        "Please create a day-trip itinerary."
+        "Please generate the itinerary."
     ),
 ])
+
+
+# --------------------------------------------------------------
+# Runnable Chain (LCEL)
+# --------------------------------------------------------------
+
+# Compose: Prompt → LLM → OutputParser as a repeatable pipeline
+itinerary_chain = prompt | llm | StrOutputParser()
 
 
 # --------------------------------------------------------------
@@ -59,28 +79,41 @@ prompt = ChatPromptTemplate.from_messages([
 # --------------------------------------------------------------
 def generate_itinerary(city: str, interests: list[str]) -> str:
     """
-    Generate a concise, bulleted day-trip itinerary.
+    Generate a concise, Markdown-formatted day-trip itinerary.
 
     Parameters
     ----------
     city : str
-        Target city for the itinerary (e.g., "Lisbon").
+        The target city for the itinerary (e.g., "Vienna").
     interests : list[str]
-        User interests to bias the plan (e.g., ["history", "coffee", "viewpoints"]).
+        List of user interests (e.g., ["art", "coffee", "architecture"]).
 
     Returns
     -------
     str
-        The model's text output containing a brief, bulleted itinerary.
+        A Markdown itinerary produced by the Groq LLM via the runnable chain.
     """
-    # Format prompt into a sequence of chat messages
-    messages = prompt.format_messages(
-        city=city,
-        interests=", ".join(interests)  # Join interests into a readable list
-    )
+    # Format runtime values for the prompt
+    input_data = {
+        "city": city,
+        "interests": ", ".join(interests)
+    }
 
-    # Invoke the chat model with the prepared messages
-    response = llm.invoke(messages)
+    # Execute the runnable chain (Prompt → LLM → Parser)
+    result = itinerary_chain.invoke(input_data)
 
-    # Return the generated text content
-    return response.content
+    return result
+
+
+# --------------------------------------------------------------
+# Standalone Test Runner
+# --------------------------------------------------------------
+if __name__ == "__main__":
+    # Simple manual test without requiring Streamlit or Planner class
+    sample_city = "Lisbon"
+    sample_interests = ["history", "coffee", "viewpoints"]
+
+    print("\n🧪 Testing itinerary generation...\n")
+    output = generate_itinerary(sample_city, sample_interests)
+    print(output)
+    print("\n✅ Done.\n")
