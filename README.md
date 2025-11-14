@@ -1,17 +1,8 @@
-# 🎨 **Streamlit Application — LLMOps Travel Itinerary Planner**
+# 🐳 **Docker & Kubernetes Deployment — LLMOps Travel Itinerary Planner**
 
-This branch introduces the **Streamlit front-end** for the LLMOps Travel Itinerary Planner.
-The new `app.py` file provides an interactive web interface that:
+This branch packages the **Streamlit-based Travel Itinerary Planner** into a **Docker container** and provides a **Kubernetes deployment + service** for running it in a cluster.
 
-* Collects the user’s **city** and **travel interests**
-* Uses the `TravelPlanner` core logic and the `itinerary_chain`
-* Displays a fully formatted, LLM-generated day-trip itinerary
-
-This is the first stage where the project becomes a **clickable, user-facing travel planner** rather than just a backend pipeline.
-
-<p align="center">
-  <img src="img/streamlit/streamlit_app.gif" alt="Streamlit Travel Itinerary Planner Demo" width="100%">
-</p>
+The new `Dockerfile` defines how to build a Python 3.12-based image that runs the Streamlit app, and `k8s-deployment.yaml` describes how to deploy that image and expose it via a LoadBalancer service.
 
 ## 🗂️ **Project Structure (Updated)**
 
@@ -30,7 +21,9 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 ├── setup.py
 ├── uv.lock
 ├── main.py
-├── app.py                           # 🌐 Streamlit UI for interactive itinerary planning
+├── app.py
+├── Dockerfile                 # 🐳 Container image definition for the Streamlit app
+├── k8s-deployment.yaml        # ☸️ Kubernetes Deployment + Service manifest
 ├── src/
 │   ├── chains/
 │   │   └── itinerary_chain.py
@@ -46,112 +39,189 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 └── README.md
 ```
 
-> 💡 Only `app.py` is annotated here, as it is the new component introduced in this branch.
+> 💡 Only `Dockerfile` and `k8s-deployment.yaml` are annotated, as they are the new components introduced in this branch.
 
 ## 🧩 **Overview**
 
-The Streamlit application wraps the existing backend logic into a simple, intuitive interface:
+This stage turns the Travel Itinerary Planner into a **deployable service**:
 
-* Users select a **city** (text box)
-* Users choose **interests** using **checkboxes** (e.g., history, beaches, nightlife)
-* The app calls `TravelPlanner`:
+* The **Dockerfile**:
 
-  * `set_city(...)`
-  * `set_interests(...)`
-  * `create_itinerary()`
-* The response is rendered as a **Markdown itinerary** inside a styled container
+  * Uses `python:3.12-slim` as the base image
+  * Installs system dependencies (e.g. `build-essential`, `curl`)
+  * Copies the project into `/app`
+  * Installs the package in editable mode with `pip install -e .`
+  * Exposes port **8501** for Streamlit
+  * Starts the app via `streamlit run app.py`
 
-This connects the LCEL itinerary chain to a real user experience for the first time.
+* The **Kubernetes manifest** (`k8s-deployment.yaml`):
 
-## ⚙️ **How the App Works**
+  * Creates a `Deployment` that runs the Streamlit container
+  * Mounts environment variables from the `llmops-secrets` Kubernetes Secret
+  * Exposes the app via a `Service` of type `LoadBalancer` on port **80 → 8501**
 
-1. **Page Setup**
-   `st.set_page_config(...)` configures page title and layout, and a centered HTML `<h1>` renders the header banner.
+This is the first stage where the app is fully prepared for **containerised, cloud-native deployment**.
 
-2. **Environment Loading**
-   `load_dotenv()` loads API keys and configuration (e.g. Groq key) from `.env`.
+## 🐳 **Docker Image Details**
 
-3. **Interest Selection**
-   A fixed list `INTEREST_OPTIONS` defines common travel interests.
-   These are presented as checkboxes in a 3-column layout.
+The `Dockerfile`:
 
-4. **Form Submission**
-   The Streamlit `form` collects:
+* Uses environment settings:
 
-   * `city` (text input)
-   * `selected_interests` (checkboxes)
+  ```dockerfile
+  ENV PYTHONDONTWRITEBYTECODE=1 \
+      PYTHONUNBUFFERED=1
+  ```
 
-   On submit:
+* Sets the working directory:
 
-   ```python
-   planner = TravelPlanner()
-   planner.set_city(city)
-   planner.set_interests(", ".join(selected_interests))
-   itinerary = planner.create_itinerary()
-   ```
+  ```dockerfile
+  WORKDIR /app
+  ```
 
-5. **Output Rendering**
-   The generated itinerary is displayed under **“📄 Your Itinerary”** inside a dark, rounded container using `st.markdown(..., unsafe_allow_html=True)`.
+* Installs OS-level dependencies and cleans up APT cache:
 
-6. **Validation**
-   If the user submits without a city or interests, the app shows a warning message instead of calling the planner.
+  ```dockerfile
+  RUN apt-get update && apt-get install -y \
+      build-essential \
+      curl \
+      && rm -rf /var/lib/apt/lists/*
+  ```
 
-## 🚀 **How to Run the Streamlit App**
+* Copies the project and installs Python deps:
+
+  ```dockerfile
+  COPY . .
+  RUN pip install --no-cache-dir -e .
+  ```
+
+* Exposes port **8501** and runs Streamlit:
+
+  ```dockerfile
+  EXPOSE 8501
+  CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+  ```
+
+### 🔨 Build & Run Locally with Docker
 
 From the project root:
 
 ```bash
-# Activate your virtual environment first, then:
-streamlit run app.py
+# Build image
+docker build -t llmops-travel-planner:latest .
+
+# Run container
+docker run -p 8501:8501 --env-file .env llmops-travel-planner:latest
 ```
 
-This will open the app in your browser (typically at `http://localhost:8501`).
+Then open `http://localhost:8501` in your browser.
 
-Steps:
+## ☸️ **Kubernetes Deployment Details**
 
-1. Enter a city (e.g. `London`, `Barcelona`, `Tokyo`).
-2. Tick several interests (e.g. **History**, **Food**, **Nightlife**).
-3. Click **“✨ Generate Itinerary”**.
-4. View the generated **1-day Markdown itinerary** in the result panel.
+The `k8s-deployment.yaml` file defines two resources: a `Deployment` and a `Service`.
 
-## 🧠 **Example Interaction**
+### Deployment
 
-Typical user flow:
+* Runs one replica of the Streamlit app:
 
-1. **City:** `London`
-2. **Interests selected:** `History`, `Museums`, `Food`
-3. **Output:** A structured itinerary such as:
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: streamlit-app
+    labels:
+      app: streamlit
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: streamlit
+    template:
+      metadata:
+        labels:
+          app: streamlit
+      spec:
+        containers:
+          - name: streamlit-container
+            image: streamlit-app:latest
+            imagePullPolicy: IfNotPresent
+            ports:
+              - containerPort: 8501
+            envFrom:
+              - secretRef:
+                  name: llmops-secrets
+  ```
 
-```markdown
-### London 1-Day Itinerary
+* Assumes you have a Kubernetes `Secret` called `llmops-secrets` providing the required environment variables (e.g. `GROQ_API_KEY`).
 
-#### Morning
-* 9:00 AM: Visit the British Museum to explore world history collections.
-* 11:00 AM: Walk to the National Gallery to see classic European paintings.
+### Service
 
-#### Afternoon
-* 1:00 PM: Lunch at Borough Market to try local and international foods.
-* 3:00 PM: Explore the Tate Modern on the South Bank.
+* Exposes the app externally via a LoadBalancer:
 
-#### Evening
-* 6:30 PM: Enjoy dinner at a traditional pub near Covent Garden.
-* 8:00 PM: Stroll along the Thames or catch a West End show.
-```
+  ```yaml
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: streamlit-service
+  spec:
+    type: LoadBalancer
+    selector:
+      app: streamlit
+    ports:
+      - protocol: TCP
+        port: 80
+        targetPort: 8501
+  ```
 
-(Exact wording will vary, but the structure remains consistent.)
+* Traffic to port **80** on the LoadBalancer is forwarded to port **8501** on the pod.
+
+## 🚀 **How to Deploy to Kubernetes**
+
+Assuming your image is pushed to a registry (or available on the node), and your kube context is set:
+
+1. **Create the secret** (example):
+
+   ```bash
+   kubectl create secret generic llmops-secrets \
+     --from-literal=GROQ_API_KEY="your_groq_api_key_here"
+   ```
+
+   Add other environment variables as needed.
+
+2. **Apply the manifest**:
+
+   ```bash
+   kubectl apply -f k8s-deployment.yaml
+   ```
+
+3. **Check resources**:
+
+   ```bash
+   kubectl get deployments
+   kubectl get pods
+   kubectl get svc
+   ```
+
+4. Once the `streamlit-service` has an external IP (for a cloud LoadBalancer), open:
+
+   ```text
+   http://<EXTERNAL_IP>/
+   ```
+
+to access the Travel Itinerary Planner in your browser.
 
 ## 🧰 **Integration Notes**
 
-| Component                       | Role                                                                 |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `app.py`                        | Streamlit front-end for collecting inputs and displaying itineraries |
-| `src/core/planner.py`           | Orchestrates city + interests handling and calls the itinerary chain |
-| `src/chains/itinerary_chain.py` | LCEL pipeline that generates the Markdown itinerary                  |
-| `src/config/config.py`          | Loads environment variables (e.g. Groq API key from `.env`)          |
-| `src/utils/logger.py`           | Logs planner and chain events for debugging                          |
-| `src/utils/custom_exception.py` | Provides structured error handling across components                 |
+| Component                       | Role                                                   |
+| ------------------------------- | ------------------------------------------------------ |
+| `Dockerfile`                    | Builds a Python 3.12-based image for the Streamlit app |
+| `k8s-deployment.yaml`           | Defines Kubernetes Deployment + LoadBalancer Service   |
+| `app.py`                        | Streamlit UI entry point inside the container          |
+| `src/core/planner.py`           | Orchestrates city and interests → itinerary            |
+| `src/chains/itinerary_chain.py` | LCEL chain that generates the itinerary text           |
+| `src/config/config.py`          | Reads environment variables (e.g. from `.env`/secrets) |
 
 ## ✅ **In summary**
 
-This branch elevates the LLMOps Travel Itinerary Planner from a backend workflow to a **fully interactive web application**.
-The new `app.py` Streamlit interface connects the planner and itinerary chain to real users, providing a clean, guided experience for generating AI-powered day-trip itineraries.
+This branch transforms the LLMOps Travel Itinerary Planner into a **containerised, cluster-ready service**.
+With the new `Dockerfile` and `k8s-deployment.yaml`, the Streamlit app can be built into an image, pushed to a registry, and deployed behind a LoadBalancer in a Kubernetes environment, making it ready for scalable, production-style use.
