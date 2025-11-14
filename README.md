@@ -1,9 +1,17 @@
-# 🧭 **Planner Logic — LLMOps Travel Itinerary Planner**
+# 🎨 **Streamlit Application — LLMOps Travel Itinerary Planner**
 
-This branch introduces the **core planning controller** of the LLMOps Travel Itinerary Planner — the `TravelPlanner`, which orchestrates user inputs, maintains conversation state, and invokes the itinerary generation chain through a clean, high-level interface.
+This branch introduces the **Streamlit front-end** for the LLMOps Travel Itinerary Planner.
+The new `app.py` file provides an interactive web interface that:
 
-This component represents the first point where the planner behaves like a real application:
-capturing user input and returning a full Markdown itinerary using the underlying LLM workflow.
+* Collects the user’s **city** and **travel interests**
+* Uses the `TravelPlanner` core logic and the `itinerary_chain`
+* Displays a fully formatted, LLM-generated day-trip itinerary
+
+This is the first stage where the project becomes a **clickable, user-facing travel planner** rather than just a backend pipeline.
+
+<p align="center">
+  <img src="img/streamlit/streamlit_app.gif" alt="Streamlit Travel Itinerary Planner Demo" width="100%">
+</p>
 
 ## 🗂️ **Project Structure (Updated)**
 
@@ -13,17 +21,21 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 ├── .env
 ├── .gitignore
 ├── .python-version
+├── img/
+│   └── streamlit/
+│       └── streamlit_app.gif
 ├── llmops_travel_itinerary_planner.egg-info/
 ├── pyproject.toml
 ├── requirements.txt
 ├── setup.py
 ├── uv.lock
 ├── main.py
+├── app.py                           # 🌐 Streamlit UI for interactive itinerary planning
 ├── src/
 │   ├── chains/
 │   │   └── itinerary_chain.py
 │   ├── core/
-│   │   └── planner.py    # 🧩 Controller for user inputs, state, and itinerary generation
+│   │   └── planner.py
 │   ├── config/
 │   │   ├── config.py
 │   │   └── README.md
@@ -34,93 +46,112 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 └── README.md
 ```
 
-> 💡 Only `src/core/planner.py` is annotated here, as it is the new component introduced in this branch.
+> 💡 Only `app.py` is annotated here, as it is the new component introduced in this branch.
 
 ## 🧩 **Overview**
 
-The **TravelPlanner** class serves as the main orchestrator for itinerary creation.
-It handles:
+The Streamlit application wraps the existing backend logic into a simple, intuitive interface:
 
-* User-provided **city**
-* User-provided **interests** (comma-separated)
-* A growing **conversation history**
-* Invocation of the full LCEL itinerary chain
-* Logging and exception tracing
+* Users select a **city** (text box)
+* Users choose **interests** using **checkboxes** (e.g., history, beaches, nightlife)
+* The app calls `TravelPlanner`:
 
-This module completes the backend logic needed for an interactive, user-facing itinerary application.
+  * `set_city(...)`
+  * `set_interests(...)`
+  * `create_itinerary()`
+* The response is rendered as a **Markdown itinerary** inside a styled container
 
-### Key Enhancements in This Branch
+This connects the LCEL itinerary chain to a real user experience for the first time.
 
-* Introduction of `TravelPlanner`
-* Clean input handling for city and interests
-* Integration with the LCEL itinerary chain
-* Fully logged lifecycle (initialisation → input → generation → output)
-* Robust exception handling
-* Standalone test runner via `if __name__ == "__main__":`
+## ⚙️ **How the App Works**
 
-## ⚙️ **How It Works**
+1. **Page Setup**
+   `st.set_page_config(...)` configures page title and layout, and a centered HTML `<h1>` renders the header banner.
 
-1. **City and interest setters** collect and sanitize user input.
-2. **Conversation history** is maintained using `HumanMessage` and `AIMessage`.
-3. The planner invokes the **LCEL pipeline** from `itinerary_chain.py`.
-4. Logging tracks every step of the process.
-5. The output is stored and returned as Markdown-formatted text.
-6. Running the file directly allows instant verification.
+2. **Environment Loading**
+   `load_dotenv()` loads API keys and configuration (e.g. Groq key) from `.env`.
 
-## 🧠 **Example Usage**
+3. **Interest Selection**
+   A fixed list `INTEREST_OPTIONS` defines common travel interests.
+   These are presented as checkboxes in a 3-column layout.
 
-```python
-from src.core.planner import TravelPlanner
+4. **Form Submission**
+   The Streamlit `form` collects:
 
-planner = TravelPlanner()
-planner.set_city("Barcelona")
-planner.set_interests("architecture, beaches, nightlife")
+   * `city` (text input)
+   * `selected_interests` (checkboxes)
 
-itinerary = planner.create_itinerary()
-print(itinerary)
+   On submit:
+
+   ```python
+   planner = TravelPlanner()
+   planner.set_city(city)
+   planner.set_interests(", ".join(selected_interests))
+   itinerary = planner.create_itinerary()
+   ```
+
+5. **Output Rendering**
+   The generated itinerary is displayed under **“📄 Your Itinerary”** inside a dark, rounded container using `st.markdown(..., unsafe_allow_html=True)`.
+
+6. **Validation**
+   If the user submits without a city or interests, the app shows a warning message instead of calling the planner.
+
+## 🚀 **How to Run the Streamlit App**
+
+From the project root:
+
+```bash
+# Activate your virtual environment first, then:
+streamlit run app.py
 ```
 
-## 🗝️ **Example Output (From Standalone Test Runner)**
+This will open the app in your browser (typically at `http://localhost:8501`).
 
-```
-2025-11-14 16:47:30,689 - INFO - Initialized TravelPlanner instance
-2025-11-14 16:47:30,689 - INFO - City set successfully
-2025-11-14 16:47:30,690 - INFO - Interests set successfully
+Steps:
 
-🧪 Testing TravelPlanner standalone...
+1. Enter a city (e.g. `London`, `Barcelona`, `Tokyo`).
+2. Tick several interests (e.g. **History**, **Food**, **Nightlife**).
+3. Click **“✨ Generate Itinerary”**.
+4. View the generated **1-day Markdown itinerary** in the result panel.
 
-2025-11-14 16:47:30,690 - INFO - Generating itinerary for city='Barcelona', interests=['architecture', 'beaches', 'nightlife']
-2025-11-14 16:47:31,668 - INFO - Itinerary generated successfully
-### Barcelona 1-Day Itinerary
+## 🧠 **Example Interaction**
+
+Typical user flow:
+
+1. **City:** `London`
+2. **Interests selected:** `History`, `Museums`, `Food`
+3. **Output:** A structured itinerary such as:
+
+```markdown
+### London 1-Day Itinerary
+
 #### Morning
-* 9:00 AM: Start at **La Sagrada Familia**, a famous architectural landmark by Antoni Gaudí
-* 10:30 AM: Visit **Park Güell**, another iconic Gaudí site with stunning city views
-* 12:00 PM: Walk along **Passeig de Gracia**, admiring modernist architecture and shopping
+* 9:00 AM: Visit the British Museum to explore world history collections.
+* 11:00 AM: Walk to the National Gallery to see classic European paintings.
 
 #### Afternoon
-* 1:00 PM: Have lunch at a beachside restaurant in **Barceloneta**, trying local seafood
-* 2:30 PM: Relax on **Barceloneta Beach**, enjoying the Mediterranean sun and sea
-* 4:00 PM: Take a stroll along the **Beach Promenade**, exploring the waterfront
+* 1:00 PM: Lunch at Borough Market to try local and international foods.
+* 3:00 PM: Explore the Tate Modern on the South Bank.
 
 #### Evening
-* 8:00 PM: Experience Barcelona's nightlife in the **Gothic Quarter**, exploring bars and clubs
-* 10:00 PM: Enjoy live music and cocktails at a rooftop bar with city views, such as **Hotel Arts**
-* 12:00 AM: End the night with a visit to **La Rambla**, a famous street filled with street performers and energy
-
-✅ Done.
+* 6:30 PM: Enjoy dinner at a traditional pub near Covent Garden.
+* 8:00 PM: Stroll along the Thames or catch a West End show.
 ```
+
+(Exact wording will vary, but the structure remains consistent.)
 
 ## 🧰 **Integration Notes**
 
-| Component                       | Description                                               |
-| ------------------------------- | --------------------------------------------------------- |
-| `src/core/planner.py`           | Main controller for user inputs and itinerary generation. |
-| `src/chains/itinerary_chain.py` | LCEL pipeline producing Markdown itineraries.             |
-| `src/config/config.py`          | Loads environment variables (Groq API key).               |
-| `src/utils/logger.py`           | Logs planner activity and chain execution.                |
-| `src/utils/custom_exception.py` | Provides consistent, traceable error handling.            |
+| Component                       | Role                                                                 |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `app.py`                        | Streamlit front-end for collecting inputs and displaying itineraries |
+| `src/core/planner.py`           | Orchestrates city + interests handling and calls the itinerary chain |
+| `src/chains/itinerary_chain.py` | LCEL pipeline that generates the Markdown itinerary                  |
+| `src/config/config.py`          | Loads environment variables (e.g. Groq API key from `.env`)          |
+| `src/utils/logger.py`           | Logs planner and chain events for debugging                          |
+| `src/utils/custom_exception.py` | Provides structured error handling across components                 |
 
 ## ✅ **In summary**
 
-This branch delivers a **fully functional planning controller**, completing the bridge between user inputs and the itinerary-generation chain.
-It sets the stage for integrating the planner into the upcoming **Streamlit interface** for end-user interaction.
+This branch elevates the LLMOps Travel Itinerary Planner from a backend workflow to a **fully interactive web application**.
+The new `app.py` Streamlit interface connects the planner and itinerary chain to real users, providing a clean, guided experience for generating AI-powered day-trip itineraries.
