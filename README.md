@@ -1,16 +1,9 @@
-# 🧭 **Itinerary Generation Chain — LLMOps Travel Itinerary Planner**
+# 🧭 **Planner Logic — LLMOps Travel Itinerary Planner**
 
-This branch introduces the **first fully functional workflow component** of the **LLMOps Travel Itinerary Planner** — the **Itinerary Generation Chain**, upgraded using **LangChain Expression Language (LCEL)** and a **string output parser** for clean, Markdown-ready itineraries.
+This branch introduces the **core planning controller** of the LLMOps Travel Itinerary Planner — the **TravelPlanner**, which orchestrates user inputs, maintains conversation history, and invokes the itinerary generation chain through a clean, high-level interface.
 
-The chain combines:
-
-* A structured **LangChain prompt template**
-* A **Groq Llama-3.3 model**
-* A **StrOutputParser()** for clean, display-ready output
-* A full **runnable pipeline** (`prompt | llm | parser`)
-* A built-in **standalone test runner** via `if __name__ == "__main__":`
-
-This stage marks the moment when the system can generate polished, human-readable itineraries directly from user preferences.
+This component represents the first point where the planner begins to behave like a real application:
+capturing city + interest inputs and returning full Markdown itineraries using the underlying LLM workflow.
 
 ## 🗂️ **Project Structure (Updated)**
 
@@ -28,8 +21,9 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 ├── main.py
 ├── src/
 │   ├── chains/
-│   │   └── itinerary_chain.py    # 🧭 LCEL pipeline: Prompt → Model → Output Parser (+ standalone runner)
+│   │   └── itinerary_chain.py
 │   ├── core/
+│   │   └── planner.py    # 🧩 Controller for user inputs, state, and itinerary generation
 │   ├── config/
 │   │   ├── config.py
 │   │   └── README.md
@@ -40,86 +34,92 @@ LLMOPS-TRAVEL-ITINERARY-PLANNER/
 └── README.md
 ```
 
-> 💡 Only the newly added/updated file (`itinerary_chain.py`) is annotated.
+> 💡 Only `src/core/planner.py` is annotated, as it is the **new component introduced in this stage**.
 
 ## 🧩 **Overview**
 
-The **Itinerary Generation Chain** transforms basic user input into a structured, Markdown-formatted day-trip itinerary.
-Enhancements in this branch include:
+The **TravelPlanner** class bridges user input and the itinerary-generation chain.
+It accepts a **city** and a set of **interests**, records them as structured messages, invokes the LCEL itinerary workflow, and returns a formatted Markdown itinerary.
 
-* **LCEL runnable pipeline** (`prompt | llm | StrOutputParser()`)
-* A **Markdown-directive system prompt** ensuring consistent formatting
-* A **standalone test runner** for quick execution
+This stage completes the core backend logic needed for an interactive user-facing application.
 
-This is the first stage where the project produces **intelligent travel recommendations**.
+### Key Improvements Introduced in This Branch
 
-## ⚙️ **How It Works (Updated)**
+* A clean planning controller (`TravelPlanner`)
+* Integration with the LCEL itinerary chain
+* Structured conversation state using `HumanMessage` and `AIMessage`
+* Logging for each step (inputs, processing, output)
+* Centralised exception handling
+* A standalone test runner using `if __name__ == "__main__":`
 
-1. **API Key Management**
-   The Groq API key is loaded securely via `src/config/config.py`.
+## ⚙️ **How It Works**
 
-2. **Prompt Template**
-   A `ChatPromptTemplate` provides the system and human messages guiding the model.
+1. **Set City**
+   Cleans the input and stores it as a message.
 
-3. **Runnable Pipeline**
-   The itinerary chain is composed using LCEL:
-   **Prompt → Groq Model → StrOutputParser**
+2. **Set Interests**
+   Parses a comma-separated string into a list of interests.
 
-4. **Output Handling**
-   `StrOutputParser()` ensures that the final output is plain, clean Markdown.
+3. **Invoke Chain**
+   Calls the LCEL pipeline (`itinerary_chain`) to generate Markdown output.
 
-5. **Public Interface**
-   `generate_itinerary(city, interests)` prepares the inputs and invokes the runnable.
+4. **Record AI Response**
+   Stores the generated itinerary as an `AIMessage` for history and future context.
 
-6. **Standalone Runner**
-   Running the file directly triggers a built-in test to confirm everything works.
+5. **Standalone Test Mode**
+   You can run:
 
-## 🧠 **Example Usage (LCEL Version)**
+   ```
+   python src/core/planner.py
+   ```
+
+   to confirm everything works independently.
+
+## 🧠 **Example Usage**
 
 ```python
-from src.chains.itinerary_chain import generate_itinerary
+from src.core.planner import TravelPlanner
 
-plan = generate_itinerary(
-    city="Lisbon",
-    interests=["history", "coffee", "viewpoints"]
-)
+planner = TravelPlanner()
+planner.set_city("Barcelona")
+planner.set_interests("architecture, beaches, nightlife")
 
-print(plan)
+itinerary = planner.create_itinerary()
+print(itinerary)
 ```
 
-## 🗝️ **Example Output (From Standalone Test Runner)**
+## 🗝️ **Example Standalone Output**
 
 ```
-🧪 Testing itinerary generation...
+🧪 Testing TravelPlanner standalone...
 
-### Lisbon 1-Day Itinerary
+### Barcelona 1-Day Itinerary
 #### Morning
-* 9:00 AM: Start at the **Miradouro de São Pedro de Alcântara** for a panoramic view of the city
-* 10:00 AM: Visit the **National Pantheon** to explore Lisbon's historical heritage
-* 11:30 AM: Stop by a traditional café, **Café Nicola**, for a coffee break
+* Scenic viewpoints…
+* Local café visit…
 
 #### Afternoon
-* 1:00 PM: Have lunch at a local restaurant in the **Baixa neighborhood**
-* 2:30 PM: Explore the **Castle of São Jorge** for a glimpse into Lisbon's medieval past
-* 4:00 PM: Enjoy the views from **Miradouro das Portas do Sol**
+* Historic district walk…
+* Cultural landmark stop…
 
 #### Evening
-* 6:00 PM: Take a stroll through the **Alfama neighborhood** and admire its Fado music culture
-* 8:00 PM: End the day with dinner and a view at a rooftop restaurant, such as **Park Bar**
+* Beachfront stroll…
+* Dinner with a view…
 
 ✅ Done.
 ```
 
 ## 🧰 **Integration Notes**
 
-| Component                       | Description                                                     |
-| ------------------------------- | --------------------------------------------------------------- |
-| `src/chains/itinerary_chain.py` | LCEL runnable (Prompt → Model → Parser) with standalone runner. |
-| `src/config/config.py`          | API key and environment variable loading.                       |
-| `src/utils/logger.py`           | Logs chain execution and errors.                                |
-| `src/utils/custom_exception.py` | Wraps errors in a consistent, traceable format.                 |
+| Component                       | Description                                               |
+| ------------------------------- | --------------------------------------------------------- |
+| `src/core/planner.py`           | Main controller for user inputs and itinerary generation. |
+| `src/chains/itinerary_chain.py` | LCEL pipeline producing Markdown itineraries.             |
+| `src/config/config.py`          | Manages environment variables including Groq API key.     |
+| `src/utils/logger.py`           | Logs planner activity and chain execution.                |
+| `src/utils/custom_exception.py` | Wraps all exceptions for consistent debugging.            |
 
 ## ✅ **In summary**
 
-This branch delivers a **modern, modular, LCEL-driven itinerary generation system**, producing clean Markdown output with a fully testable standalone runner.
-It forms the foundation for integrating itinerary logic into planners, agents, and Streamlit interfaces in future stages.
+This branch delivers a **fully functional planning controller**, completing the core logic needed to connect user inputs with LLM-powered itinerary generation.
+It sets the stage for the upcoming **Streamlit interface**, which will act as the front-end for this planner.
