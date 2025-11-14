@@ -1,0 +1,92 @@
+---
+# --------------------------------------------------------------
+# PersistentVolumeClaim (PVC)
+# Stores Elasticsearch data on disk so logs persist across restarts
+# --------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-pvc
+  namespace: logging
+spec:
+  accessModes:
+    - ReadWriteOnce              # Only one node can mount the volume at a time
+  resources:
+    requests:
+      storage: 2Gi               # Size of the persistent storage
+  storageClassName: standard     # Default storage class in most clusters
+
+---
+# --------------------------------------------------------------
+# Elasticsearch Deployment
+# Single-node Elasticsearch instance for log storage
+# --------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+
+          # Environment variables controlling ES behaviour
+          env:
+            - name: discovery.type
+              value: single-node          # Disable cluster mode
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"  # JVM heap size
+            - name: xpack.security.enabled
+              value: "false"              # Disable built-in security for simplicity
+
+          # Expose Elasticsearch REST API
+          ports:
+            - containerPort: 9200         # Default HTTP API port
+
+          # Resource allocation for the pod
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+
+          # Mount the persistent data directory
+          volumeMounts:
+            - mountPath: /usr/share/elasticsearch/data
+              name: elasticsearch-storage
+
+      # Link the PVC into the pod
+      volumes:
+        - name: elasticsearch-storage
+          persistentVolumeClaim:
+            claimName: elasticsearch-pvc
+
+---
+# --------------------------------------------------------------
+# Elasticsearch Service
+# Exposes Elasticsearch inside the cluster to Logstash and Kibana
+# --------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: logging
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - protocol: TCP
+      port: 9200        # Service port inside cluster
+      targetPort: 9200  # Container port exposed above

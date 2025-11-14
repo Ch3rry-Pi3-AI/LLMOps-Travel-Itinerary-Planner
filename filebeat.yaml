@@ -1,0 +1,260 @@
+---
+# --------------------------------------------------------------
+# Filebeat ConfigMap
+# Holds the Filebeat configuration file (filebeat.yml)
+# --------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: logging
+  labels:
+    k8s-app: filebeat
+data:
+  filebeat.yml: |-
+    # Input: read all container logs from /var/log/containers/
+    filebeat.inputs:
+    - type: container
+      paths:
+        - /var/log/containers/*.log
+      processors:
+        - add_kubernetes_metadata:
+            host: ${NODE_NAME}
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+    # Add cloud & host metadata automatically
+    processors:
+      - add_cloud_metadata:
+      - add_host_metadata:
+
+    # Ship logs to Logstash
+    output.logstash:
+      hosts: ["logstash.logging.svc.cluster.local:5044"]
+
+---
+# --------------------------------------------------------------
+# Filebeat DaemonSet
+# Runs a Filebeat pod on every Kubernetes node
+# --------------------------------------------------------------
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: logging
+  labels:
+    k8s-app: filebeat
+spec:
+  selector:
+    matchLabels:
+      k8s-app: filebeat
+  template:
+    metadata:
+      labels:
+        k8s-app: filebeat
+    spec:
+      serviceAccountName: filebeat
+      terminationGracePeriodSeconds: 30
+
+      # Allows access to host logs
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      containers:
+      - name: filebeat
+        image: docker.elastic.co/beats/filebeat:7.17.28
+        args: [
+          "-c", "/etc/filebeat.yml",
+          "-e",
+        ]
+
+        # Expose node name to Filebeat for metadata enrichment
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+
+        # Run Filebeat as root for access to log directories
+        securityContext:
+          runAsUser: 0
+          # If on OpenShift, set privileged: true
+
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+
+        volumeMounts:
+        - name: config
+          mountPath: /etc/filebeat.yml
+          subPath: filebeat.yml
+          readOnly: true
+
+        # Stores registry of processed logs (so logs aren’t resent)
+        - name: data
+          mountPath: /usr/share/filebeat/data
+
+        # Read container logs
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+
+        # Read all node-level logs
+        - name: varlog
+          mountPath: /var/log
+          readOnly: true
+
+      volumes:
+      - name: config
+        configMap:
+          name: filebeat-config
+          defaultMode: 0640
+
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+
+      - name: varlog
+        hostPath:
+          path: /var/log
+
+      # Stores Filebeat registry so logs are not duplicated on restart
+      - name: data
+        hostPath:
+          path: /var/lib/filebeat-data
+          type: DirectoryOrCreate
+
+---
+# --------------------------------------------------------------
+# RBAC: ClusterRoleBinding
+# Grants cluster-wide access for Filebeat to read metadata
+# --------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+- kind: ServiceAccount
+  name: filebeat
+  namespace: logging
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# --------------------------------------------------------------
+# RBAC: RoleBinding (namespace-level)
+# --------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: filebeat
+  namespace: logging
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: logging
+roleRef:
+  kind: Role
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# --------------------------------------------------------------
+# RBAC: RoleBinding for kubeadm config access
+# --------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: filebeat-kubeadm-config
+  namespace: logging
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: logging
+roleRef:
+  kind: Role
+  name: filebeat-kubeadm-config
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# --------------------------------------------------------------
+# RBAC: ClusterRole
+# Grants Filebeat read access to pods, nodes, namespaces
+# --------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+  labels:
+    k8s-app: filebeat
+rules:
+- apiGroups: [""]  # Core API group
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs:
+  - get
+  - watch
+  - list
+
+- apiGroups: ["apps"]
+  resources:
+    - replicasets
+  verbs: ["get", "list", "watch"]
+
+---
+# --------------------------------------------------------------
+# RBAC: Role (namespace= logging)
+# Handles leader election via leases
+# --------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: filebeat
+  namespace: logging
+  labels:
+    k8s-app: filebeat
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs: ["get", "create", "update"]
+
+---
+# --------------------------------------------------------------
+# RBAC: Role for kubeadm-config access
+# --------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: filebeat-kubeadm-config
+  namespace: logging
+  labels:
+    k8s-app: filebeat
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    resourceNames:
+      - kubeadm-config
+    verbs: ["get"]
+
+---
+# --------------------------------------------------------------
+# Filebeat Service Account
+# --------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: logging
+  labels:
+    k8s-app: filebeat
