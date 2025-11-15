@@ -1,297 +1,88 @@
-# 🟣 **ELK Stack Logging Setup — LLMOps Travel Itinerary Planner**
+# 🌍 **LLMOps Travel Itinerary Planner — Project Overview**
 
-This stage sets up a complete **ELK (Elasticsearch, Logstash, Kibana) logging pipeline** inside your **Minikube Kubernetes cluster** running on your **GCP VM**.
+This repository delivers a **complete end-to-end LLMOps pipeline** for a **Travel Itinerary Planner**, combining:
 
-You will:
+* **Custom LCEL chain logic**
+* **Streamlit front-end user interface**
+* **Containerisation via Docker**
+* **Kubernetes deployment and orchestration**
+* **Full ELK logging pipeline** (Filebeat → Logstash → Elasticsearch → Kibana)
+* **Cloud-based setup** through a **GCP Virtual Machine**
 
-* Create a dedicated `logging` namespace
-* Deploy **Elasticsearch** (persistent storage, single node)
-* Deploy **Kibana** (web UI for visualising logs)
-* Deploy **Logstash** (receives logs from Filebeat and pushes to Elasticsearch)
-* Deploy **Filebeat** (collects logs from all pods in the cluster)
-* Expose Kibana externally via port-forwarding
-* Configure Kibana with index patterns
-* Explore your live logs using the Discover dashboard
-
-This README captures the entire workflow, including the **exact commands** and **exact outputs** you obtained, along with a full Kibana setup walkthrough using your screenshots.
-
-
-
-## ▶️ **Step 1 — Open a New VM Terminal**
-
-All steps below take place in a **fresh terminal session** inside your GCP VM.
-
-
-
-## ▶️ **Step 2 — Create the Logging Namespace**
-
-```bash
-kubectl create namespace logging
-```
-
-Output:
-
-```
-namespace/logging created
-```
-
-Check that the namespace exists:
-
-```bash
-kubectl get ns
-```
-
-Output:
-
-```
-NAME              STATUS   AGE
-default           Active   111m
-kube-node-lease   Active   111m
-kube-public       Active   111m
-kube-system       Active   111m
-logging           Active   83s
-```
-
-
-
-## ▶️ **Step 3 — Deploy Elasticsearch**
-
-```bash
-kubectl apply -f elasticsearch.yaml
-```
-
-Output:
-
-```
-persistentvolumeclaim/elasticsearch-pvc created
-deployment.apps/elasticsearch created
-service/elasticsearch created
-```
-
-Check the pod:
-
-```bash
-kubectl get pods -n logging
-```
-
-Output:
-
-```
-NAME                             READY   STATUS    RESTARTS      AGE
-elasticsearch-576cd6f7cc-zwb2f   1/1     Running   5 (91s ago)   3m31s
-```
-
-Check the PVC:
-
-```bash
-kubectl get pvc -n logging
-```
-
-Output:
-
-```
-NAME                STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
-elasticsearch-pvc   Bound    pvc-f80df407-3f57-4028-9c27-eb6e11e6ea2a   2Gi        RWO            standard       <unset>                 4m30s
-```
-
-Check the Persistent Volume:
-
-```bash
-kubectl get pv -n logging
-```
-
-Output:
-
-```
-NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                       STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
-pvc-f80df407-3f57-4028-9c27-eb6e11e6ea2a   2Gi        RWO            Delete           Bound    logging/elasticsearch-pvc   standard       <unset>                          5m38s
-```
-
-If both show **Bound**, your Elasticsearch storage is correctly configured.
-
-
-
-## ▶️ **Step 4 — Deploy Kibana**
-
-```bash
-kubectl apply -f kibana.yaml
-```
-
-Output:
-
-```
-deployment.apps/kibana created
-service/kibana created
-```
-
-
-
-## ▶️ **Step 5 — Deploy Logstash**
-
-```bash
-kubectl apply -f logstash.yaml
-```
-
-Output:
-
-```
-configmap/logstash-config created
-deployment.apps/logstash created
-service/logstash created
-```
-
-
-
-## ▶️ **Step 6 — Deploy Filebeat**
-
-```bash
-kubectl apply -f filebeat.yaml
-```
-
-Output:
-
-```
-configmap/filebeat-config created
-daemonset.apps/filebeat created
-clusterrolebinding.rbac.authorization.k8s.io/filebeat created
-rolebinding.rbac.authorization.k8s.io/filebeat created
-rolebinding.rbac.authorization.k8s.io/filebeat-kubeadm-config created
-clusterrole.rbac.authorization.k8s.io/filebeat created
-role.rbac.authorization.k8s.io/filebeat created
-role.rbac.authorization.k8s.io/filebeat-kubeadm-config created
-serviceaccount/filebeat created
-```
-
-
-
-## ▶️ **Step 7 — Verify All Components Are Running**
-
-```bash
-kubectl get all -n logging
-```
-
-Output:
-
-```
-NAME                                 READY   STATUS    RESTARTS        AGE
-pod/elasticsearch-576cd6f7cc-zwb2f   1/1     Running   8 (5m15s ago)   16m
-pod/filebeat-jq6nk                   1/1     Running   0               3m31s
-pod/kibana-674887df9d-9tcwp          1/1     Running   0               6m39s
-pod/logstash-6599577996-l54j9        1/1     Running   0               9m5s
-
-NAME                    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
-service/elasticsearch   ClusterIP   10.101.212.56   <none>        9200/TCP         16m
-service/kibana          NodePort    10.106.254.73   <none>        5601:30601/TCP   6m39s
-service/logstash        ClusterIP   10.98.12.8      <none>        5044/TCP         9m5s
-
-NAME                      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-daemonset.apps/filebeat   1         1         1       1            1           <none>          3m32s
-
-NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/elasticsearch   1/1     1            1           16m
-deployment.apps/kibana          1/1     1            1           6m39s
-deployment.apps/logstash        1/1     1            1           9m5s
-
-NAME                                       DESIRED   CURRENT   READY   AGE
-replicaset.apps/elasticsearch-576cd6f7cc   1         1         1       16m
-replicaset.apps/kibana-674887df9d          1         1         1       6m39s
-replicaset.apps/logstash-6599577996        1         1         1       9m5s
-```
-
-Everything is running.
-
-
-
-## ▶️ **Step 8 — Expose Kibana Externally**
-
-Run:
-
-```bash
-kubectl port-forward -n logging svc/kibana 5601:5601 --address 0.0.0.0
-```
-
-While this terminal stays open, visit:
-
-```
-http://<YOUR_EXTERNAL_IP>:5601
-```
-
-This loads the Kibana dashboard.
-
-
-
-# 🌐 **Kibana Walkthrough**
-
-When the page loads, you’ll see the Kibana landing screen:
+The system allows users to generate **personalised travel itineraries** using a Groq-powered LLM, interact with those results through a Streamlit web application, and observe all application logs through the ELK stack.
 
 <p align="center">
-  <img src="img/kibana/kibana_landing.png" width="100%">
+  <img src="img/streamlit/streamlit_app.gif" alt="Streamlit App Demo" width="100%">
 </p>
 
-Select **Explore on my own**.
+## 🧩 **Grouped Stages**
 
-You will then see the main Kibana dashboard:
+|     #     | Stage                                      | Description                                                                                                                                               |
+| :-------: | :----------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   **00**  | **Project Setup**                          | Created the initial folder structure, Python environment files, and project scaffolding.                                                                  |
+| **01–02** | **Core LCEL Logic**                        | Built the itinerary generation chain and the planner module that orchestrates user preferences into structured itinerary outputs.                         |
+|   **03**  | **Streamlit Application**                  | Implemented the user-facing Streamlit front end for entering destinations and generating itinerary recommendations.                                       |
+|   **04**  | **Containerisation & Deployment Files**    | Authored the Dockerfile and Kubernetes deployment manifest to run the Streamlit application in a containerised environment.                               |
+|   **05**  | **ELK Stack Manifests**                    | Created the full logging pipeline: Filebeat for log shipping, Logstash for processing, Elasticsearch for indexed storage, and Kibana for log exploration. |
+| **06–08** | **Cloud & Cluster Configuration**          | Set up a GCP VM, installed Docker Engine, Minikube, kubectl, connected the GitHub repo, and configured firewall rules for external access.                |
+|   **09**  | **Kubernetes Deployment (Application)**    | Deployed the Streamlit container to the Minikube cluster and exposed it via port-forwarding and external IP access.                                       |
+|   **10**  | **ELK Stack Deployment & Log Exploration** | Deployed the Filebeat → Logstash → Elasticsearch → Kibana pipeline and configured Kibana to inspect application logs.                                     |
 
-<p align="center">
-  <img src="img/kibana/kibana_dashboard.png" width="100%">
-</p>
+## 🗂️ **Project Structure**
 
-
-
-## ▶️ **Setting Up Index Patterns**
-
-From the left sidebar, go to **Stack Management**:
-
-<p align="center">
-  <img src="img/kibana/stack_mng.png" width="100%">
-</p>
-
-Then click **Index Patterns**:
-
-<p align="center">
-  <img src="img/kibana/index_patterns.png" width="100%">
-</p>
-
-Select **+ Create index pattern**.
-
-Use the following settings:
-
-**Index pattern name:**
-
+```text
+LLMOPS-TRAVEL-ITINERARY-PLANNER/
+├── .venv/                                # Python virtual environment
+├── .env                                  # Environment variables (GROQ API key)
+├── .gitignore                            # Git ignore rules
+├── .python-version                       # Python version pin
+│
+├── img/
+│   └── streamlit/
+│       └── streamlit_app.gif             # Demo animation of the Streamlit UI
+│
+├── llmops_travel_itinerary_planner.egg-info/  # Package metadata generated by setup.py
+│
+├── pyproject.toml                         # Project metadata and dependency configuration
+├── requirements.txt                       # Python dependency list
+├── setup.py                               # Package setup configuration
+├── uv.lock                                # Locked dependency versions for reproducibility
+│
+├── main.py                                # Entry script for manual chain testing
+├── app.py                                 # Streamlit front end that connects UI → itinerary pipeline
+│
+├── Dockerfile                             # Container image definition for Streamlit app
+├── k8s-deployment.yaml                    # Kubernetes Deployment + Service for Streamlit app
+│
+├── filebeat.yaml                          # Collects container/node logs and ships them to Logstash
+├── logstash.yaml                          # Receives Filebeat logs, optionally processes them, forwards to Elasticsearch
+├── elasticsearch.yaml                     # Elasticsearch single-node deployment + storage PVC
+├── kibana.yaml                            # Kibana UI for exploring indexed logs
+│
+├── src/
+│   ├── chains/
+│   │   └── itinerary_chain.py             # LCEL chain for generating itinerary text from user preferences
+│   ├── core/
+│   │   └── planner.py                     # Planner class that structures itinerary steps and interacts with the chain
+│   ├── config/
+│   │   ├── config.py                      # Reads GROQ API key and other environment variables
+│   │   └── README.md                      # Documentation for configuration handling
+│   └── utils/
+│       ├── custom_exception.py            # Custom exception class for unified error reporting
+│       ├── logger.py                      # Logging setup for app-level logs
+│       └── README.md                      # Documentation for core utility modules
+│
+└── README.md                              # Root project documentation (this file)
 ```
-filebeat-*
-```
 
-**Timestamp field:**
+## 🚀 **Summary**
 
-```
-@timestamp
-```
+The **LLMOps Travel Itinerary Planner** is a complete demonstration of how to operationalise an LLM-powered application from the ground up:
 
-<p align="center">
-  <img src="img/kibana/create_index_pattern.png" width="100%">
-</p>
+* **Custom LCEL chain + planner logic**
+* **Interactive Streamlit interface**
+* **Docker + Kubernetes deployment**
+* **Complete ELK logging workflow**
+* **Full cloud-based setup via GCP VM**
 
-Once created:
-
-<p align="center">
-  <img src="img/kibana/created_pattern.png" width="100%">
-</p>
-
-
-
-## ▶️ **Exploring Logs**
-
-In the left sidebar under **Analytics**, click **Discover**:
-
-<p align="center">
-  <img src="img/kibana/discover.png" width="100%">
-</p>
-
-Use the left-hand filter panel to drill down into specific logs — for example, filtering by container image:
-
-<p align="center">
-  <img src="img/kibana/filter.png" width="100%">
-</p>
-
-You now have a fully functional ELK logging pipeline showing live logs from your Kubernetes cluster.
+This project serves as a practical, scalable blueprint for deploying LLM applications in a **cloud-native, observable, production-ready environment**, while maintaining clean modular architecture and high development standards.
