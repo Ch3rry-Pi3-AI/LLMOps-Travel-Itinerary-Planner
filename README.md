@@ -1,222 +1,158 @@
-# 📊 **Centralised Logging Deployment — LLMOps Travel Itinerary Planner**
+# ☁️ **GCP Virtual Machine Setup — LLMOps Travel Itinerary Planner**
 
-This branch introduces a complete **centralised logging pipeline** for the Travel Itinerary Planner using the **ELK stack**:
+In this stage, we deploy our environment to **Google Cloud Platform (GCP)** using a **Compute Engine Virtual Machine (VM)** and install the **Docker Engine**.
+This setup provides a reliable cloud-based environment for building, testing, and running the **LLMOps Travel Itinerary Planner** inside containers.
 
-* **Filebeat** — Collects logs from every container/pod
-* **Logstash** — Processes, transforms, and routes logs
-* **Elasticsearch** — Stores logs in a powerful, searchable index
-* **Kibana** — Visualises logs through dashboards and search
+## 🧭 **Step 1 — Launch a GCP VM**
 
-These four components work together to provide full observability of the application and cluster.
-This is the first stage where the project gains **production-grade, cluster-wide log monitoring**.
+1. Log into or sign up for **Google Cloud Platform**:
+   [https://cloud.google.com/](https://cloud.google.com/)
+2. Search for **Compute Engine** in the GCP console and go to **VM instances**.
+3. Click **+ Create instance**.
+
+### Machine Configuration
+
+Keep all defaults **except** for the *Machine type*.
+Change it to:
+
+```
+e2-standard-4 (4 vCPU, 2 core, 16 GB memory)
+```
+
+under the **Standard** tab.
+
+### OS and Storage
+
+Under **OS and storage**, click **Change** and select the options shown below:
 
 <p align="center">
-  <img src="img/streamlit/streamlit_app.gif" alt="Streamlit Travel Itinerary Planner Demo" width="100%">
+  <img src="img/vm_setup/change_os.png" alt="Change OS Settings in GCP" width="80%">
 </p>
 
-## 🗂️ **Project Structure (Updated)**
+### Networking
 
-```text
-LLMOPS-TRAVEL-ITINERARY-PLANNER/
-├── .venv/
-├── .env
-├── .gitignore
-├── .python-version
-├── img/
-│   └── streamlit/
-│       └── streamlit_app.gif
-├── llmops_travel_itinerary_planner.egg-info/
-├── pyproject.toml
-├── requirements.txt
-├── setup.py
-├── uv.lock
-├── main.py
-├── app.py
-├── Dockerfile
-├── k8s-deployment.yaml
-├── filebeat.yaml           # 📡 Collects container logs from all cluster nodes
-├── logstash.yaml           # 🔄 Receives logs and forwards them to Elasticsearch
-├── elasticsearch.yaml      # 🗄️ Stores logs in indexed search-optimised storage
-├── kibana.yaml             # 📊 Web UI for searching and visualising logs
-├── src/
-│   ├── chains/
-│   │   └── itinerary_chain.py
-│   ├── core/
-│   │   └── planner.py
-│   ├── config/
-│   │   ├── config.py
-│   │   └── README.md
-│   └── utils/
-│       ├── custom_exception.py
-│       ├── logger.py
-│       └── README.md
-└── README.md
-```
+Under **Networking → Firewall**, check:
 
-Only the following files are new in this branch and are annotated here:
+* Allow HTTP traffic
+* Allow HTTPS traffic
+* Allow Load Balancer Health Checks
 
-* `filebeat.yaml` 📡
-* `logstash.yaml` 🔄
-* `elasticsearch.yaml` 🗄️
-* `kibana.yaml` 📊
+Also **enable IP forwarding**.
 
-## 🧩 **Overview of the Logging Pipeline**
+Click **Create** to launch the instance.
 
-This stage introduces a full **ELK-style logging workflow** that enables:
+When the instance is ready, click **SSH** under *Connect* to open an SSH terminal.
 
-* Cluster-wide log collection
-* Central storage of logs
-* Indexable log search
-* Visual dashboards
-* Debugging of failures in real time
+## ⚙️ **Step 2 — Install Docker Engine**
 
-Below is a clear beginner-friendly breakdown of what each component does and why it matters.
+Visit the official Docker documentation:
+[https://docs.docker.com/engine/install/ubuntu/](https://docs.docker.com/engine/install/ubuntu/)
 
-### 📡 **Filebeat — Log Collector**
-
-Filebeat runs as a **DaemonSet**, meaning **one pod per Kubernetes node**, ensuring:
-
-* Every pod’s logs (`/var/log/containers/*.log`) are collected
-* Kubernetes metadata (namespace, pod name, container name) is added
-* Logs are forwarded to **Logstash**
-
-**Intuition:**
-Imagine Filebeat as a “tiny agent” sitting on every machine, picking up every log file and forwarding it reliably.
-
-### 🔄 **Logstash — Log Router & Transformer**
-
-Logstash receives logs from Filebeat and can:
-
-* Filter them
-* Parse them
-* Transform them
-* Route them
-
-In this project, the configuration:
-
-* Accepts logs on port **5044** (standard Beats input)
-* Sends them straight to Elasticsearch
-
-**Intuition:**
-If Filebeat is the courier, Logstash is the post office—it sorts, organises, and routes deliveries.
-
-### 🗄️ **Elasticsearch — Log Storage & Search Engine**
-
-Elasticsearch stores logs as **documents** in an index.
-It is optimised for:
-
-* Full-text search
-* Time-series queries
-* Filtering & aggregation
-* High-speed retrieval
-
-In this deployment:
-
-* Runs as a **single node** for simplicity
-* Stores logs in a persistent volume
-* No security enabled (development mode)
-
-**Intuition:**
-Elasticsearch is like a giant, super-fast search engine for your logs.
-
-### 📊 **Kibana — Log Viewer & Dashboard Tool**
-
-Kibana connects to Elasticsearch and provides:
-
-* A web UI for viewing logs
-* Filters, queries, dashboards
-* Time-series visualisations
-* Error and performance insights
-
-Exposed via a **NodePort** so you can open it in your browser.
-
-**Intuition:**
-Kibana is your “control centre”—search logs, view charts, identify errors.
-
-:
-
-## 🔄 **How the Log Flow Works (Simple Example)**
-
-Consider your Streamlit app pod writes:
-
-```
-2025-11-21 14:21:05 INFO Itinerary generated successfully
-```
-
-Here is what happens:
-
-1. **Filebeat** (on the node) reads `/var/log/containers/app-xyz.log`.
-2. It attaches metadata:
-
-   ```
-   namespace=default
-   pod=streamlit-app-123
-   container=streamlit-container
-   ```
-3. Filebeat forwards the enriched log to **Logstash**.
-4. Logstash receives it and sends it to **Elasticsearch**.
-5. Elasticsearch stores it as a document in an index:
-
-   ```
-   filebeat-2025.11.21
-   ```
-6. You open **Kibana**, search:
-
-   ```
-   app:streamlit AND level:INFO
-   ```
-7. You immediately see the log with filters and timestamps.
-
-This provides real production-grade observability.
-
-:
-
-## 🚀 **How to Deploy the Logging Stack**
-
-Assuming your cluster has the `logging` namespace:
+Scroll to **“Install using the apt repository”** and copy the commands under **1. Set up Docker’s apt repository**:
 
 ```bash
-kubectl create ns logging
+# Add Docker's official GPG key:
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository to Apt sources:
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
 ```
 
-Apply all four components:
+Then scroll to **2. Install the Docker packages** and run only:
 
 ```bash
-kubectl apply -f elasticsearch.yaml
-kubectl apply -f logstash.yaml
-kubectl apply -f filebeat.yaml
-kubectl apply -f kibana.yaml
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-Check pods:
+To verify the installation:
 
 ```bash
-kubectl get pods -n logging
+sudo docker run hello-world
 ```
 
-Once Kibana is running:
+Expected output begins with:
+
+```
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+```
+
+## 🧪 **Step 3 — Enable Docker for Your User**
+
+Go to:
+[https://docs.docker.com/engine/install/linux-postinstall/](https://docs.docker.com/engine/install/linux-postinstall/)
+
+Copy and paste the following into your VM terminal:
 
 ```bash
-minikube service kibana -n logging
+sudo groupadd docker
+sudo usermod -aG docker $USER
+newgrp docker
+docker run hello-world
 ```
 
-Or, for cloud clusters:
+This allows Docker commands without `sudo`.
+
+Now scroll down to **“Configure Docker to start on boot with systemd”** and run:
+
+```bash
+sudo systemctl enable docker.service
+sudo systemctl enable containerd.service
+```
+
+You should see output similar to:
 
 ```
-http://<NODE_IP>:30601
+Synchronizing state of docker.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable docker
 ```
 
-## 🧰 **Integration Notes**
+## ✅ **Step 4 — Confirm Installation**
 
-| Component            | Purpose                                                        |
-| -------------------- | -------------------------------------------------------------- |
-| `filebeat.yaml`      | Collects logs from all pods and forwards to Logstash           |
-| `logstash.yaml`      | Receives Filebeat logs and forwards them to Elasticsearch      |
-| `elasticsearch.yaml` | Stores logs in searchable indices                              |
-| `kibana.yaml`        | Web UI for querying logs and building dashboards               |
-| `app.py`             | Application producing logs                                     |
-| `logger.py`          | Structured logging used by Filebeat → Logstash → Elasticsearch |
+Finally:
 
-## ✅ **In summary**
+```bash
+docker version
+```
 
-This branch adds a **complete cluster-wide logging pipeline**, elevating your LLMOps Travel Itinerary Planner from a deployed app to a **monitorable, observable, production-ready service**.
+You should see output similar to:
+
+```
+Client: Docker Engine - Community
+ Version:           29.0.0
+ API version:       1.52
+ Go version:        go1.25.4
+ Git commit:        3d4129b
+ Built:             Mon Nov 10 21:46:31 2025
+ OS/Arch:           linux/amd64
+ Context:           default
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          29.0.0
+  API version:      1.52 (minimum version 1.44)
+  Go version:       go1.25.4
+  Git commit:       d105562
+  Built:            Mon Nov 10 21:46:31 2025
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          v2.1.5
+  GitCommit:        fcd43222d6b07379a4be9786bda52438f0dd16a1
+ runc:
+  Version:          1.3.3
+  GitCommit:        v1.3.3-0-gd842d771
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+```
+
+Your **Docker Engine** is now fully installed and configured on your **GCP VM**, ready to support deployment of the **LLMOps Travel Itinerary Planner**.
