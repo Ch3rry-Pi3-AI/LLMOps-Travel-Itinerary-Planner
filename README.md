@@ -26,7 +26,7 @@ under the **Standard** tab.
 Under **OS and storage**, click **Change** and select the options shown below:
 
 <p align="center">
-  <img src="img/vm_setup/change_os.png" alt="Change OS Settings in GCP" width="80%">
+  <img src="img/vm_setup/change_os.png" alt="Change OS Settings in GCP" width="100%">
 </p>
 
 ### Networking
