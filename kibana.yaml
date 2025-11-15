@@ -1,18 +1,24 @@
 ---
 # --------------------------------------------------------------
 # Kibana Deployment
-# Web UI for exploring and visualising logs stored in Elasticsearch
+# Kibana provides the *frontend* of the ELK stack.
+# It allows you to:
+#   • search logs coming from Filebeat → Logstash → Elasticsearch
+#   • build dashboards, charts, alerts
+#   • visually explore system/application behaviour
+#
+# This deployment runs one Kibana pod inside the "logging" namespace.
 # --------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kibana
-  namespace: logging
+  name: kibana                     # Name of the deployment
+  namespace: logging               # Deploy Kibana to the logging namespace
 spec:
-  replicas: 1
+  replicas: 1                      # One Kibana instance is enough for dev setups
   selector:
     matchLabels:
-      app: kibana
+      app: kibana                  # Match pods labelled "app=kibana"
   template:
     metadata:
       labels:
@@ -20,21 +26,42 @@ spec:
     spec:
       containers:
         - name: kibana
-          image: docker.elastic.co/kibana/kibana:7.17.0
+          image: docker.elastic.co/kibana/kibana:7.17.0  # Official Kibana image
 
-          # Environment variable telling Kibana where Elasticsearch is located
+          # -----------------------------------------------
+          # Kibana must know where Elasticsearch lives.
+          # It communicates with ES to:
+          #   • fetch log indices
+          #   • power visualisations
+          #   • store saved dashboards
+          #
+          # The DNS name "elasticsearch" works because of the
+          # corresponding Service object in the same namespace.
+          # -----------------------------------------------
           env:
             - name: ELASTICSEARCH_HOSTS
               value: http://elasticsearch:9200
 
-          # Expose the Kibana web interface inside the pod
+          # -----------------------------------------------
+          # Kibana UI runs on port 5601 inside the container
+          # -----------------------------------------------
           ports:
             - containerPort: 5601
 
 ---
 # --------------------------------------------------------------
 # Kibana Service
-# Exposes Kibana via NodePort so you can access it externally
+# This exposes Kibana *externally* via NodePort.
+#
+# After applying this manifest, you can reach Kibana using:
+#
+#   http://<NODE_IP>:30601
+#
+# For example:
+#   • Minikube:   http://$(minikube ip):30601
+#   • VM cluster: http://VM_PUBLIC_IP:30601
+#
+# Once opened, you can explore logs visually.
 # --------------------------------------------------------------
 apiVersion: v1
 kind: Service
@@ -42,9 +69,9 @@ metadata:
   name: kibana
   namespace: logging
 spec:
-  type: NodePort        # Exposes Kibana externally through a node port
+  type: NodePort                  # Makes Kibana available outside the cluster
   selector:
-    app: kibana
+    app: kibana                   # Routes traffic to pods with this label
   ports:
-    - port: 5601        # Service port
-      nodePort: 30601   # External port on each node
+    - port: 5601                  # Service port (internal to cluster)
+      nodePort: 30601             # Public-access port on each Kubernetes node
