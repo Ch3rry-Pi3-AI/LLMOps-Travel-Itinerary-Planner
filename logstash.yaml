@@ -1,34 +1,52 @@
 ---
 # --------------------------------------------------------------
 # Logstash ConfigMap
-# Provides the Logstash pipeline configuration (logstash.conf)
+# Holds the Logstash pipeline configuration (logstash.conf)
 # --------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: logstash-config
-  namespace: logging
+  name: logstash-config              # Name of this ConfigMap
+  namespace: logging                 # Lives in the "logging" namespace
 data:
   logstash.conf: |
-    # -------------------------------
-    # INPUT: Receive logs from Filebeat
-    # -------------------------------
+    # ----------------------------------------------------------
+    # INPUT SECTION
+    # Accept logs sent by Filebeat using the Beats protocol
+    # Filebeat sends its output to port 5044, so Logstash
+    # must listen on the same port.
+    # ----------------------------------------------------------
     input {
       beats {
-        port => 5044
+        port => 5044                 # Port for receiving Filebeat logs
       }
     }
 
-    # -------------------------------
-    # FILTER: (currently empty — ready for future enrichment)
-    # -------------------------------
+    # ----------------------------------------------------------
+    # FILTER SECTION
+    # This block is intentionally empty right now.
+    # Here you could:
+    #   - parse JSON logs
+    #   - add tags
+    #   - drop noisy logs
+    #   - grok Kubernetes log formats
+    #   - extract timestamps or fields
+    #
+    # Filebeat → Logstash → Elasticsearch is still 100% functional
+    # without any filters.
+    # ----------------------------------------------------------
     filter {
-      
+
     }
 
-    # -------------------------------
-    # OUTPUT: Send logs to Elasticsearch
-    # -------------------------------
+    # ----------------------------------------------------------
+    # OUTPUT SECTION
+    # Send the processed logs to Elasticsearch.
+    # Using the in-cluster DNS name of the Elasticsearch service.
+    #
+    # The index pattern "filebeat-YYYY.MM.dd" matches Filebeat’s
+    # daily index style and keeps logs organised by date.
+    # ----------------------------------------------------------
     output {
       elasticsearch {
         hosts => ["http://elasticsearch.logging.svc.cluster.local:9200"]
@@ -39,64 +57,66 @@ data:
 ---
 # --------------------------------------------------------------
 # Logstash Deployment
-# Runs Logstash as a single replica in the "logging" namespace
+# Runs Logstash as a Deployment with 1 replica.
+# This is sufficient since Logstash acts as a central log router.
 # --------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: logstash
-  namespace: logging
+  name: logstash                      # Name of the Deployment
+  namespace: logging                  # Lives in the logging namespace
 spec:
-  replicas: 1
+  replicas: 1                         # One Logstash instance is usually enough
   selector:
     matchLabels:
-      app: logstash
+      app: logstash                   # Pods must carry this label
   template:
     metadata:
       labels:
-        app: logstash
+        app: logstash                 # Label applied to created pods
     spec:
       containers:
-      - name: logstash
+      - name: logstash                # Name of the Logstash container
         image: docker.elastic.co/logstash/logstash:7.17.0
 
-        # Expose ports:
-        # 5044 → Filebeat input
-        # 9600 → Logstash monitoring API
+        # Logstash exposes:
+        #   - 5044: Beats input (Filebeat → Logstash)
+        #   - 9600: Logstash monitoring API
         ports:
-        - containerPort: 5044
-        - containerPort: 9600
+        - containerPort: 5044         # For receiving Filebeat logs
+        - containerPort: 9600         # Optional: monitoring / health API
 
-        # Mount pipeline configuration file
+        # Mount the config file from the ConfigMap into the container
         volumeMounts:
         - name: config-volume
-          mountPath: /usr/share/logstash/pipeline/logstash.conf
-          subPath: logstash.conf
+          mountPath: /usr/share/logstash/pipeline/logstash.conf  # Where Logstash expects pipeline config
+          subPath: logstash.conf                                 # Use only this file from the ConfigMap
 
       volumes:
-      - name: config-volume
+      - name: config-volume           # Volume that holds Logstash config
         configMap:
-          name: logstash-config
-          items:
+          name: logstash-config       # Reference ConfigMap defined above
+          items:                      # Explicitly map key → file
           - key: logstash.conf
-            path: logstash.conf
+            path: logstash.conf       # File name inside the pod
 
 ---
 # --------------------------------------------------------------
 # Logstash Service
-# Exposes Logstash to Filebeat inside the cluster
+# Makes Logstash reachable by Filebeat inside the cluster.
+# Filebeat output should match this service name and port.
 # --------------------------------------------------------------
 apiVersion: v1
 kind: Service
 metadata:
-  name: logstash
+  name: logstash                      # Service name (used in Filebeat output)
   namespace: logging
 spec:
   selector:
-    app: logstash
+    app: logstash                     # Forward traffic to pods with this label
 
-  # Expose port 5044 to receive Beats data
+  # Expose Beats port for Filebeat → Logstash traffic
   ports:
     - protocol: TCP
-      port: 5044
-      targetPort: 5044
+      port: 5044                      # Port exposed inside the cluster
+      targetPort: 5044                # Port inside the Logstash pod
