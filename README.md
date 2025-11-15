@@ -1,121 +1,297 @@
-# 🚀 **Kubernetes Deployment — LLMOps Travel Itinerary Planner**
+# 🟣 **ELK Stack Logging Setup — LLMOps Travel Itinerary Planner**
 
-In this stage, we deploy the **LLMOps Travel Itinerary Planner** onto a **Kubernetes cluster** running on our **Minikube setup within a GCP VM**.
-This stage brings the entire project to life — containerising the Streamlit application and serving it publicly via Kubernetes services.
+This stage sets up a complete **ELK (Elasticsearch, Logstash, Kibana) logging pipeline** inside your **Minikube Kubernetes cluster** running on your **GCP VM**.
 
-## 🧭 **Step 1 — Connect Docker to Minikube**
+You will:
 
-In your VM terminal, run:
+* Create a dedicated `logging` namespace
+* Deploy **Elasticsearch** (persistent storage, single node)
+* Deploy **Kibana** (web UI for visualising logs)
+* Deploy **Logstash** (receives logs from Filebeat and pushes to Elasticsearch)
+* Deploy **Filebeat** (collects logs from all pods in the cluster)
+* Expose Kibana externally via port-forwarding
+* Configure Kibana with index patterns
+* Explore your live logs using the Discover dashboard
 
-```bash
-eval $(minikube docker-env)
-```
+This README captures the entire workflow, including the **exact commands** and **exact outputs** you obtained, along with a full Kibana setup walkthrough using your screenshots.
 
-This command ensures Docker points to Minikube’s internal environment so your image builds **directly inside Minikube’s Docker daemon**.
 
-Now, build your Docker image:
 
-```bash
-docker build -t streamlit-app:latest .
-```
+## ▶️ **Step 1 — Open a New VM Terminal**
 
-Once complete, confirm the image exists:
+All steps below take place in a **fresh terminal session** inside your GCP VM.
 
-```bash
-docker images
-```
 
-Example output:
 
-```
-IMAGE                                             ID             DISK USAGE   
-gcr.io/k8s-minikube/storage-provisioner:v5        6e38f40d628d       31.5MB      
-streamlit-app:latest                              bd292243bb00        964MB      
-registry.k8s.io/coredns/coredns:v1.12.1           52546a367cc9         75MB      
-registry.k8s.io/etcd:3.6.4-0                      5f1f5298c888        195MB      
-...
-```
-
-Your **streamlit-app:latest** image is now ready to deploy.
-
-## 🔐 **Step 2 — Inject Secrets into Kubernetes**
-
-This project uses **Groq only**, so create a secret containing just the Groq API key:
+## ▶️ **Step 2 — Create the Logging Namespace**
 
 ```bash
-kubectl create secret generic llmops-secrets \
-  --from-literal=GROQ_API_KEY=""
+kubectl create namespace logging
 ```
 
-Replace `""` with your real API key.
-
-You should see:
+Output:
 
 ```
-secret/llmops-secrets created
+namespace/logging created
 ```
 
-## 🧩 **Step 3 — Deploy the Application**
-
-Apply your Kubernetes deployment and service file:
+Check that the namespace exists:
 
 ```bash
-kubectl apply -f k8s-deployment.yaml
+kubectl get ns
 ```
 
-Example output:
+Output:
 
 ```
-deployment.apps/streamlit-app created
-service/streamlit-service created
+NAME              STATUS   AGE
+default           Active   111m
+kube-node-lease   Active   111m
+kube-public       Active   111m
+kube-system       Active   111m
+logging           Active   83s
 ```
 
-Check that your pod is running:
+
+
+## ▶️ **Step 3 — Deploy Elasticsearch**
 
 ```bash
-kubectl get pods
+kubectl apply -f elasticsearch.yaml
 ```
 
-Example:
+Output:
 
 ```
-NAME                              READY   STATUS    RESTARTS   AGE
-streamlit-app-58b5995844-66kth    1/1     Running   0          32s
+persistentvolumeclaim/elasticsearch-pvc created
+deployment.apps/elasticsearch created
+service/elasticsearch created
 ```
 
-## 💻 **Step 4 — Forward Ports and Access the App**
+Check the pod:
+
+```bash
+kubectl get pods -n logging
+```
+
+Output:
+
+```
+NAME                             READY   STATUS    RESTARTS      AGE
+elasticsearch-576cd6f7cc-zwb2f   1/1     Running   5 (91s ago)   3m31s
+```
+
+Check the PVC:
+
+```bash
+kubectl get pvc -n logging
+```
+
+Output:
+
+```
+NAME                STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+elasticsearch-pvc   Bound    pvc-f80df407-3f57-4028-9c27-eb6e11e6ea2a   2Gi        RWO            standard       <unset>                 4m30s
+```
+
+Check the Persistent Volume:
+
+```bash
+kubectl get pv -n logging
+```
+
+Output:
+
+```
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                       STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+pvc-f80df407-3f57-4028-9c27-eb6e11e6ea2a   2Gi        RWO            Delete           Bound    logging/elasticsearch-pvc   standard       <unset>                          5m38s
+```
+
+If both show **Bound**, your Elasticsearch storage is correctly configured.
+
+
+
+## ▶️ **Step 4 — Deploy Kibana**
+
+```bash
+kubectl apply -f kibana.yaml
+```
+
+Output:
+
+```
+deployment.apps/kibana created
+service/kibana created
+```
+
+
+
+## ▶️ **Step 5 — Deploy Logstash**
+
+```bash
+kubectl apply -f logstash.yaml
+```
+
+Output:
+
+```
+configmap/logstash-config created
+deployment.apps/logstash created
+service/logstash created
+```
+
+
+
+## ▶️ **Step 6 — Deploy Filebeat**
+
+```bash
+kubectl apply -f filebeat.yaml
+```
+
+Output:
+
+```
+configmap/filebeat-config created
+daemonset.apps/filebeat created
+clusterrolebinding.rbac.authorization.k8s.io/filebeat created
+rolebinding.rbac.authorization.k8s.io/filebeat created
+rolebinding.rbac.authorization.k8s.io/filebeat-kubeadm-config created
+clusterrole.rbac.authorization.k8s.io/filebeat created
+role.rbac.authorization.k8s.io/filebeat created
+role.rbac.authorization.k8s.io/filebeat-kubeadm-config created
+serviceaccount/filebeat created
+```
+
+
+
+## ▶️ **Step 7 — Verify All Components Are Running**
+
+```bash
+kubectl get all -n logging
+```
+
+Output:
+
+```
+NAME                                 READY   STATUS    RESTARTS        AGE
+pod/elasticsearch-576cd6f7cc-zwb2f   1/1     Running   8 (5m15s ago)   16m
+pod/filebeat-jq6nk                   1/1     Running   0               3m31s
+pod/kibana-674887df9d-9tcwp          1/1     Running   0               6m39s
+pod/logstash-6599577996-l54j9        1/1     Running   0               9m5s
+
+NAME                    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+service/elasticsearch   ClusterIP   10.101.212.56   <none>        9200/TCP         16m
+service/kibana          NodePort    10.106.254.73   <none>        5601:30601/TCP   6m39s
+service/logstash        ClusterIP   10.98.12.8      <none>        5044/TCP         9m5s
+
+NAME                      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+daemonset.apps/filebeat   1         1         1       1            1           <none>          3m32s
+
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/elasticsearch   1/1     1            1           16m
+deployment.apps/kibana          1/1     1            1           6m39s
+deployment.apps/logstash        1/1     1            1           9m5s
+
+NAME                                       DESIRED   CURRENT   READY   AGE
+replicaset.apps/elasticsearch-576cd6f7cc   1         1         1       16m
+replicaset.apps/kibana-674887df9d          1         1         1       6m39s
+replicaset.apps/logstash-6599577996        1         1         1       9m5s
+```
+
+Everything is running.
+
+
+
+## ▶️ **Step 8 — Expose Kibana Externally**
 
 Run:
 
 ```bash
-kubectl port-forward svc/streamlit-service 8501:80 --address 0.0.0.0
+kubectl port-forward -n logging svc/kibana 5601:5601 --address 0.0.0.0
 ```
 
-This forwards **external traffic → port 8501** on your Streamlit app inside Kubernetes.
-
-Keep this terminal open.
-
-Now, in your browser, visit:
+While this terminal stays open, visit:
 
 ```
-http://<YOUR_EXTERNAL_IP>:8501
+http://<YOUR_EXTERNAL_IP>:5601
 ```
 
-Example:
+This loads the Kibana dashboard.
+
+
+
+# 🌐 **Kibana Walkthrough**
+
+When the page loads, you’ll see the Kibana landing screen:
+
+<p align="center">
+  <img src="img/kibana/kibana_landing.png" width="100%">
+</p>
+
+Select **Explore on my own**.
+
+You will then see the main Kibana dashboard:
+
+<p align="center">
+  <img src="img/kibana/kibana_dashboard.png" width="100%">
+</p>
+
+
+
+## ▶️ **Setting Up Index Patterns**
+
+From the left sidebar, go to **Stack Management**:
+
+<p align="center">
+  <img src="img/kibana/stack_mng.png" width="100%">
+</p>
+
+Then click **Index Patterns**:
+
+<p align="center">
+  <img src="img/kibana/index_patterns.png" width="100%">
+</p>
+
+Select **+ Create index pattern**.
+
+Use the following settings:
+
+**Index pattern name:**
 
 ```
-http://136.114.199.97:8501
+filebeat-*
 ```
 
-Your **Travel Itinerary Planner Streamlit interface** will now be accessible from anywhere.
+**Timestamp field:**
 
-## ✅ **In Summary**
+```
+@timestamp
+```
 
-You have successfully:
+<p align="center">
+  <img src="img/kibana/create_index_pattern.png" width="100%">
+</p>
 
-* Built and containerised your **Streamlit** application using Docker
-* Deployed it to Kubernetes running on Minikube
-* Injected your Groq API key securely
-* Exposed the service externally via port forwarding
+Once created:
 
-Your **LLMOps Travel Itinerary Planner** is now running in a fully functional Kubernetes environment on **Google Cloud Platform**, completing your end-to-end deployment workflow.
+<p align="center">
+  <img src="img/kibana/created_pattern.png" width="100%">
+</p>
+
+
+
+## ▶️ **Exploring Logs**
+
+In the left sidebar under **Analytics**, click **Discover**:
+
+<p align="center">
+  <img src="img/kibana/discover.png" width="100%">
+</p>
+
+Use the left-hand filter panel to drill down into specific logs — for example, filtering by container image:
+
+<p align="center">
+  <img src="img/kibana/filter.png" width="100%">
+</p>
+
+You now have a fully functional ELK logging pipeline showing live logs from your Kubernetes cluster.
