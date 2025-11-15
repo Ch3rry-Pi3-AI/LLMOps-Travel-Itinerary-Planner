@@ -10,10 +10,6 @@ This branch introduces a complete **centralised logging pipeline** for the Trave
 These four components work together to provide full observability of the application and cluster.
 This is the first stage where the project gains **production-grade, cluster-wide log monitoring**.
 
-<p align="center">
-  <img src="img/streamlit/streamlit_app.gif" alt="Streamlit Travel Itinerary Planner Demo" width="100%">
-</p>
-
 ## 🗂️ **Project Structure (Updated)**
 
 ```text
