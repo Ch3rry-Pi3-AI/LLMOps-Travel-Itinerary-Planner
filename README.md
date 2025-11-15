@@ -1,122 +1,121 @@
-# 🔗 **GitHub Integration and Firewall Configuration — LLMOps Travel Itinerary Planner**
+# 🚀 **Kubernetes Deployment — LLMOps Travel Itinerary Planner**
 
-In this stage, we connect the **LLMOps Travel Itinerary Planner** GitHub repository to the **Google Cloud Platform (GCP) Virtual Machine**, allowing direct version control operations from the VM.
-We also configure a **firewall rule** to ensure the VM can communicate securely with GitHub and external services.
+In this stage, we deploy the **LLMOps Travel Itinerary Planner** onto a **Kubernetes cluster** running on our **Minikube setup within a GCP VM**.
+This stage brings the entire project to life — containerising the Streamlit application and serving it publicly via Kubernetes services.
 
-## 🧭 **Step 1 — Clone the GitHub Repository**
+## 🧭 **Step 1 — Connect Docker to Minikube**
 
-Go to your project’s GitHub repository.
-Click the green **“<> Code”** dropdown and copy the **HTTPS URL** of the repository.
+In your VM terminal, run:
+
+```bash
+eval $(minikube docker-env)
+```
+
+This command ensures Docker points to Minikube’s internal environment so your image builds **directly inside Minikube’s Docker daemon**.
+
+Now, build your Docker image:
+
+```bash
+docker build -t streamlit-app:latest .
+```
+
+Once complete, confirm the image exists:
+
+```bash
+docker images
+```
+
+Example output:
+
+```
+IMAGE                                             ID             DISK USAGE   
+gcr.io/k8s-minikube/storage-provisioner:v5        6e38f40d628d       31.5MB      
+streamlit-app:latest                              bd292243bb00        964MB      
+registry.k8s.io/coredns/coredns:v1.12.1           52546a367cc9         75MB      
+registry.k8s.io/etcd:3.6.4-0                      5f1f5298c888        195MB      
+...
+```
+
+Your **streamlit-app:latest** image is now ready to deploy.
+
+## 🔐 **Step 2 — Inject Secrets into Kubernetes**
+
+This project uses **Groq only**, so create a secret containing just the Groq API key:
+
+```bash
+kubectl create secret generic llmops-secrets \
+  --from-literal=GROQ_API_KEY=""
+```
+
+Replace `""` with your real API key.
+
+You should see:
+
+```
+secret/llmops-secrets created
+```
+
+## 🧩 **Step 3 — Deploy the Application**
+
+Apply your Kubernetes deployment and service file:
+
+```bash
+kubectl apply -f k8s-deployment.yaml
+```
+
+Example output:
+
+```
+deployment.apps/streamlit-app created
+service/streamlit-service created
+```
+
+Check that your pod is running:
+
+```bash
+kubectl get pods
+```
 
 Example:
 
 ```
-https://github.com/Ch3rry-Pi3-AI/LLMOps-Travel-Itinerary-Planner.git
+NAME                              READY   STATUS    RESTARTS   AGE
+streamlit-app-58b5995844-66kth    1/1     Running   0          32s
 ```
 
-Now, in your GCP VM terminal, run:
+## 💻 **Step 4 — Forward Ports and Access the App**
+
+Run:
 
 ```bash
-git clone https://github.com/Ch3rry-Pi3-AI/LLMOps-Travel-Itinerary-Planner.git
+kubectl port-forward svc/streamlit-service 8501:80 --address 0.0.0.0
 ```
 
-(Replace this URL with your real repository link.)
+This forwards **external traffic → port 8501** on your Streamlit app inside Kubernetes.
 
-Next, navigate into the cloned directory:
+Keep this terminal open.
 
-```bash
-cd LLMOps-Travel-Itinerary-Planner
-```
-
-You are now inside your project folder within the VM.
-
-## ⚙️ **Step 2 — Configure Git Identity**
-
-Set up your Git global configuration so commits made from the VM are correctly attributed to you.
-
-```bash
-git config --global user.email "the_rfc@hotmai.co.uk"
-git config --global user.name "Roger J. Campbell"
-```
-
-Verify the configuration:
-
-```bash
-git config --list
-```
-
-You should now see your email and username.
-
-## 🔑 **Step 3 — Generate a GitHub Personal Access Token**
-
-1. Go to **GitHub → Settings**.
-
-2. Scroll to **Developer Settings**.
-
-3. Click **Personal access tokens → Tokens (classic)**.
-
-4. Select **Generate new token → Generate new token (classic)**.
-
-5. Give it a name, e.g., `travel-itinerary`.
-
-6. Select the following scopes:
-
-   * `repo`
-   * `workflow`
-   * `admin:org`
-   * `admin:repo_hook`
-   * `admin:org_hook`
-
-7. Click **Generate token**.
-
-⚠️ **Copy the token immediately** — GitHub will never show it again.
-
-## 🚀 **Step 4 — Authenticate and Pull from GitHub**
-
-Now that you have a token, pull from GitHub:
-
-```bash
-git pull origin main
-```
-
-When prompted:
-
-* **Username:** your GitHub username
-* **Password:** your personal access token
-
-Authentication will complete and the pull will succeed.
-
-## 🔥 **Step 5 — Create a GCP Firewall Rule**
-
-Next, configure a firewall rule in GCP to ensure your VM can communicate with GitHub and other external services.
-
-1. In the **Google Cloud Console**, search for **Network Security**.
-2. Under **Cloud NGFW**, click **Firewall rule → + Create firewall policy**.
-3. Set **Policy name** to:
+Now, in your browser, visit:
 
 ```
-allow-llmops
+http://<YOUR_EXTERNAL_IP>:8501
 ```
 
-4. Configure:
+Example:
 
-| Field                   | Setting                      |
-| ----------------------- | ---------------------------- |
-| **Targets**             | All instances in the network |
-| **Source IPv4 ranges**  | `0.0.0.0/0`                  |
-| **Protocols and ports** | Allow all                    |
+```
+http://136.114.199.97:8501
+```
 
-5. Click **Create**.
-
-Your firewall policy now allows full outbound communication between your VM and GitHub.
+Your **Travel Itinerary Planner Streamlit interface** will now be accessible from anywhere.
 
 ## ✅ **In Summary**
 
-You have now successfully:
+You have successfully:
 
-* Cloned the **LLMOps Travel Itinerary Planner** repo into your GCP VM
-* Configured Git identity for authenticated pushes
-* Created a **GitHub personal access token** for secure auth
-* Created a **GCP firewall rule** for proper connectivity
+* Built and containerised your **Streamlit** application using Docker
+* Deployed it to Kubernetes running on Minikube
+* Injected your Groq API key securely
+* Exposed the service externally via port forwarding
 
-Your VM is now fully connected to GitHub and ready for container builds, logging deployment, CI/CD, and Kubernetes orchestration.
+Your **LLMOps Travel Itinerary Planner** is now running in a fully functional Kubernetes environment on **Google Cloud Platform**, completing your end-to-end deployment workflow.
